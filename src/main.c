@@ -68,7 +68,8 @@ void kmain(void) {
     }
     set_idt_entry(32, timer_callback, 0, 0x8E);
     set_idt_entry(8, double_fault_handler, 1, 0x8E);
-    set_idt_entry(14, page_fault_handler, 1, 0x8E);
+    set_idt_entry(13, page_fault_handler, 1, 0x8E);
+    set_idt_entry(14, double_fault_handler, 1, 0x8E);
     for (int y = 0; y < 32; y++) {
         for (int x = 0; x < 8; x++) {
             char buf[16];

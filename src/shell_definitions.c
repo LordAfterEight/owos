@@ -68,10 +68,12 @@ void handle_input(struct Shell* shell, char* input) {
         asm volatile ("cli");
     }
     else if (strcmp(input, "page_fault")) {
+        set_idt_entry(14, page_fault_handler, 0, 0x8E);
+        set_idt_entry(8, double_fault_handler, 1, 0x8E);
         *(volatile int*)0x123456789ABCDEF0 = 42;
     }
     else if (strcmp(input, "double_fault")) {
-        set_idt_entry(14, page_fault_handler, 0, 0x8E);
+        set_idt_entry(14, page_fault_handler, 1, 0x8E);
         set_idt_entry(8, double_fault_handler, 0, 0x8E);
         *(volatile int*)0x123456789ABCDEF0 = 42;
     }
