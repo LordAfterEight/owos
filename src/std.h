@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-static char* KERNEL_VERSION = "0.2.4";
+static char* KERNEL_VERSION = "0.2.5";
 
 void panic(const char message[]);
 size_t strlen(const char s[]);

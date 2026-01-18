@@ -3,7 +3,6 @@
 #include "rendering.h"
 #include "shell/shell_definitions.h"
 #include "idt.h"
-#include "fonts/OwOSFont_8x8.h"
 #include "fonts/OwOSFont_8x16.h"
 
 volatile unsigned long ticks = 0;
@@ -15,8 +14,8 @@ void pit_init(struct Shell* shell, uint32_t frequency) {
     outb(PIT_CHANNEL0, divisor >> 8);
     char buf[64];
     format(buf, "Initialized Programmable Interval Timer with frequency %dHz", frequency);
-    shell_print(shell, "[Kernel:PIT] -> ", 0xFFFFFF, false, &OwOSFont_8x16);
-    shell_println(shell, buf, 0xAAAAAA, false, &OwOSFont_8x16);
+    shell_print("[Kernel:PIT] -> ", 0xAAAAAA, false, &OwOSFont_8x16);
+    shell_println(buf, 0xFFFFFF, false, &OwOSFont_8x16);
 }
 
 __attribute__((used, interrupt))

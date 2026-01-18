@@ -1,6 +1,5 @@
 #include "rendering.h"
 #include "stdio.h"
-#include "fonts/OwOSFont_8x8.h"
 #include "fonts/OwOSFont_8x16.h"
 #include "timer.h"
 #include "sound/pcspeaker.h"
@@ -17,7 +16,7 @@ void panic(const char message[]) {
     beep(500, 25);
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
         for (int x = 0; x < SCREEN_WIDTH; x++) {
-            blit_pixel(x, y, 0x770000);
+            blit_pixel(x, y, 0x770000 | y / 15);
         }
     }
     char buf[32];
@@ -160,13 +159,12 @@ void format(char* buf, const char* fmt, ...) {
         {
             fmt++;
             width = 0;
-            // Very basic width support (only digits)
             while (*fmt >= '0' && *fmt <= '9')
                 width = width * 10 + (*fmt++ - '0');
             switch (*fmt++)
             {
                 case 'c':   *p++ = (char)va_arg(va, int); break;
-                case 's':   
+                case 's':
                 {
                     const char* s = va_arg(va, const char*);
                     while (*s) *p++ = *s++;
@@ -191,7 +189,7 @@ void format(char* buf, const char* fmt, ...) {
                 case '%':   *p++ = '%'; break;
                 default:
                     *p++ = '%';
-                    p[-1] = fmt[-1];  // put back unknown specifier
+                    p[-1] = fmt[-1];
                     break;
             }
         }
