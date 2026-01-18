@@ -3,7 +3,7 @@
 
 #pragma once
 #include <stdint.h>
-#include "shell_definitions.h"
+#include "shell/shell_definitions.h"
 
 struct Shell;
 

@@ -30,17 +30,18 @@ __attribute__((aligned(32)))
 extern struct IDTPointer idt_ptr;
 
 void set_idt_entry(int vector, void* handler, uint8_t ist, uint8_t type_attr);
+bool check_idt_entry(int vector, void* handler, uint8_t ist, uint8_t type_attr);
 void idt_init(void);
 extern void timer_handler_asm();
 
 __attribute__((interrupt))
-void default_handler(uint64_t* frame);
+void default_handler(struct InterruptFrame* frame);
 
 __attribute__((interupt))
-void page_fault_handler(uint64_t* frame);
+void page_fault_handler(struct InterruptFrame* frame);
 
 __attribute__((interrupt))
-void double_fault_handler(uint64_t* frame);
+void double_fault_handler(struct InterruptFrame* frame);
 
 __attribute__((noreturn))
-void panic_handler_c(uint64_t* frame);
+void panic_handler_c(struct InterruptFrame* frame);

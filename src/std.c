@@ -3,6 +3,7 @@
 #include "fonts/OwOSFont_8x8.h"
 #include "fonts/OwOSFont_8x16.h"
 #include "timer.h"
+#include "sound/pcspeaker.h"
 #include <stdarg.h>
 
 size_t strlen(const char* s) {
@@ -13,6 +14,7 @@ size_t strlen(const char* s) {
 }
 
 void panic(const char message[]) {
+    beep(500, 25);
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
         for (int x = 0; x < SCREEN_WIDTH; x++) {
             blit_pixel(x, y, 0x770000);

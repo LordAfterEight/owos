@@ -1,7 +1,7 @@
-#include "bitmap_font.h"
 #include "rendering.h"
 #include "std.h"
 #include "fonts/font.h"
+#include "fonts/get_bitmap.h"
 
 const int SCREEN_WIDTH = 1920;
 const int SCREEN_HEIGHT = 1080;

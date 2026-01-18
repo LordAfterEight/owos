@@ -1,11 +1,12 @@
 #include "prerequisites.h"
 #include "rendering.h"
 #include "std.h"
-#include "shell.h"
+#include "shell/shell.h"
 #include "timer.h"
 #include "idt.h"
 #include "gdt.h"
 #include "pic.h"
+#include "sound/pcspeaker.h"
 
 #include "fonts/OwOSFont_8x8.h"
 #include "fonts/OwOSFont_8x16.h"
@@ -30,8 +31,9 @@ void kmain(void) {
 
     global_framebuffer = (volatile uint32_t*)framebuffer->address;
 
-    struct InputBuffer input_buffer = {
+    struct CommandBuffer command_buffer = {
         buffer: {' '},
+        nth_command: 0,
         buffer_pos: 0,
     };
 
@@ -43,9 +45,11 @@ void kmain(void) {
     };
 
     struct Shell shell = {
-        buffer: input_buffer,
+        buffer: command_buffer,
         cursor: cursor,
     };
+
+    clear_screen(&shell);
 
     gdt_init();
 
@@ -58,25 +62,42 @@ void kmain(void) {
     pic_remap();
 
     char buf[64];
-    format(buf, "Pushing default handler address (0x%x) to interrupt descriptor table", default_handler);
-    shell_println(&shell, buf, 0xFFFFFF, false, &OwOSFont_8x16);
-    draw_text(640, 1, "IDT Vectors:", 0xAAFFAA, false, &OwOSFont_8x16);
+
+    shell_println(&shell, "[Kernel:IDT] <- Default Handler", 0xFFFFFF, false, &OwOSFont_8x16);
     for (int y = 0; y < 32; y++) {
         for (int x = 0; x < 8; x++) {
             set_idt_entry(x+8*y, default_handler, 0, 0x8E);
         }
     }
+
+    shell_print(&shell, "[Kernel:IDT] <- ", 0xFFFFFF, false, &OwOSFont_8x16);
+    shell_println(&shell, "Timer Callback", 0xAAAAAA, false, &OwOSFont_8x16);
     set_idt_entry(32, timer_callback, 0, 0x8E);
+
+    shell_print(&shell, "[Kernel:IDT] <- ", 0xFFFFFF, false, &OwOSFont_8x16);
+    shell_println(&shell, "Double Fault Handler", 0xAAAAAA, false, &OwOSFont_8x16);
     set_idt_entry(8, double_fault_handler, 1, 0x8E);
-    set_idt_entry(13, page_fault_handler, 1, 0x8E);
-    set_idt_entry(14, double_fault_handler, 1, 0x8E);
-    for (int y = 0; y < 32; y++) {
-        for (int x = 0; x < 8; x++) {
-            char buf[16];
-            format(buf, "vector %d: 0x%x", x+8*y, idt[x+8*y]);
-            draw_text(640 + x*160, 20 + y*16, buf, 0xFFAAAA, false, &OwOSFont_8x16);
-        }
-    }
+
+    shell_print(&shell, "[Kernel:IDT] <- ", 0xFFFFFF, false, &OwOSFont_8x16);
+    shell_println(&shell, "Page Fault Handler", 0xAAAAAA, false, &OwOSFont_8x16);
+    set_idt_entry(14, page_fault_handler, 1, 0x8E);
+
+    shell_print(&shell, "[Kernel:IDT] -> ", 0xFFFFFF, false, &OwOSFont_8x16);
+    shell_println(&shell, "Checking Entries...", 0xFFFF77, false, &OwOSFont_8x16);
+
+    shell_print(&shell, "[Kernel:IDT] -> ", 0xFFFFFF, false, &OwOSFont_8x16);
+    if (check_idt_entry(32, timer_callback, 0, 0x8E)) {
+        shell_println(&shell, "Timer Callback [OK]", 0x22FF22, false, &OwOSFont_8x16);
+    } else shell_println(&shell, "Timer Callback [ERR]", 0xFF2222, false, &OwOSFont_8x16);
+    shell_print(&shell, "[Kernel:IDT] -> ", 0xFFFFFF, false, &OwOSFont_8x16);
+    if (check_idt_entry(8, double_fault_handler, 1, 0x8E)) {
+        shell_println(&shell, "DF Handler [OK]", 0x22FF22, false, &OwOSFont_8x16);
+    } else shell_println(&shell, "DF Handler [ERR]", 0xFF2222, false, &OwOSFont_8x16);
+    shell_print(&shell, "[Kernel:IDT] -> ", 0xFFFFFF, false, &OwOSFont_8x16);
+    if (check_idt_entry(14, page_fault_handler, 1, 0x8E)) {
+        shell_println(&shell, "PF Handler [OK]", 0x22FF22, false, &OwOSFont_8x16);
+    } else shell_println(&shell, "PF Handler [ERR]", 0xFF2222, false, &OwOSFont_8x16);
+
     idt_init();
 
     outb(PIC1_DATA, 0xFF);
@@ -91,10 +112,12 @@ void kmain(void) {
     shell_println(&shell, "", 0x000000, false, &OwOSFont_8x16);
 
     shell_println(&shell, "Welcome to the OwOS-C kernel!", 0x66FF66, false, &OwOSFont_8x16);
-    shell_println(&shell, "Ver 0.1.0", 0xFF6666, false, &OwOSFont_8x16);
+    shell_println(&shell, KERNEL_VERSION, 0xFF6666, false, &OwOSFont_8x16);
     shell_print(&shell, "Build date: ", 0xDDDDDD, false, &OwOSFont_8x16);
     shell_println(&shell, __DATE__, 0x6666FF, false, &OwOSFont_8x16);
     shell_println(&shell, "", 0xFFFFFF, false, &OwOSFont_8x16);
+
+    beep(1000, 50);
 
     int result = start_shell(shell);
     switch (result) {
