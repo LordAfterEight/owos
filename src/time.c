@@ -1,7 +1,7 @@
 // From wiki.osdev.org/CMOS
 
 #include "time.h"
-#include "std.h"
+#include "std/std.h"
 
 unsigned char second = 0;
 unsigned char minute = 0;

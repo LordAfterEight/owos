@@ -1,6 +1,6 @@
 #include "prerequisites.h"
 #include "rendering.h"
-#include "std.h"
+#include "std/std.h"
 #include "shell/shell_definitions.h"
 #include "timer.h"
 #include "idt.h"

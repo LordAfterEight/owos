@@ -6,6 +6,9 @@
 #include "fonts/OwOSFont_8x16.h"
 #include "sound/pcspeaker.h"
 #include "time.h"
+#include "std/mem.h"
+#include "std/string.h"
+#include "ramfs/ramfs.h"
 
 volatile struct CommandBuffer command_buffer = {0};
 volatile struct Cursor cursor = {0};
@@ -50,7 +53,7 @@ void clear_screen() {
     draw_rect_f(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000);
     draw_rect_f(0, SCREEN_HEIGHT - 20, SCREEN_WIDTH, 20, 0x101010);
     char buf[32];
-    format(buf, "OwOS-C v%s", KERNEL_VERSION);
+    format(buf, "%s %s v%s", KERNEL_NAME, OS_MODEL, KERNEL_VERSION);
     draw_text(5, SCREEN_HEIGHT - 18, buf, 0xAAAAAA, false, &OwOSFont_8x16);
 }
 
@@ -111,16 +114,9 @@ int handle_input(char* input) {
     }
     else if (strcmp(input, "idt reinit")) {
         idt_init();
-        for (int y = 0; y < 32; y++) {
-            for (int x = 0; x < 8; x++) {
-                char buf[16];
-                format(buf, "vector %d: 0x%x", x+8*y, idt[x+8*y]);
-                draw_text(640 + x*160, 20 + y*16, buf, 0xFF7777, false, &OwOSFont_8x16);
-            }
-        }
     }
     else if (strcmp(input, "idt poison")) {
-        set_idt_entry(8, (void*)0xDEADBEEF, 1, 0x8E);
+        set_idt_entry(8, (void*)0xCAFE, 1, 0x8E);
     }
     else if (strcmp(input, "idt check")) {
         shell_print("[Kernel:IDT] -> ", 0xFFFFFF, false, &OwOSFont_8x16);
@@ -135,6 +131,14 @@ int handle_input(char* input) {
         if (check_idt_entry(14, page_fault_handler, 1, 0x8E)) {
             shell_println("PF Handler [OK]", 0x22FF22, false, &OwOSFont_8x16);
         } else shell_println("PF Handler [ERR]", 0xFF2222, false, &OwOSFont_8x16);
+        for (int y = 0; y < 32; y++) {
+            for (int x = 0; x < 8; x++) {
+                char buf[16];
+                format(buf, "vector %d: 0x%x", x+8*y, idt[x+8*y]);
+                draw_rect_f(640 + x*160, 20 + y*16, strlen(buf)*8, 16, 0x000000);
+                draw_text(640 + x*160, 20 + y*16, buf, 0xFF7777, false, &OwOSFont_8x16);
+            }
+        }
     }
     else {
         if (!(strcmp(input, "\0"))) {
@@ -201,7 +205,7 @@ int update_shell() {
         draw_text(SCREEN_WIDTH - strlen(time) * 8 - 5, SCREEN_HEIGHT - 18, time, 0x101010, false, &OwOSFont_8x16);
         memset(time, 0, sizeof time);
         read_rtc();
-        format(time, "%d:%d:%d | %d/%d/%d", hour, minute, second, day, month, year);
+        format(time, "%d:%d:%d | %d/%d/%d", hour + 1, minute, second, day, month, year);
         draw_text(SCREEN_WIDTH - strlen(time) * 8 - 5, SCREEN_HEIGHT - 18, time, 0xAAAAAA, false, &OwOSFont_8x16);
     };
     update_cursor(shell);
@@ -231,7 +235,7 @@ void greet() {
     shell.cursor.pos_y += 20;
     shell_print("Kernel: ", 0x7777FF, false, &OwOSFont_8x16);
     char buf[32];
-    format(buf, "OwOS-C v%s", KERNEL_VERSION);
+    format(buf, "%s %s v%s", KERNEL_NAME, OS_MODEL, KERNEL_VERSION);
     shell_println(buf, 0x77FF77, false, &OwOSFont_8x16);
     shell_print("Build Date: ", 0x7777FF, false, &OwOSFont_8x16);
     shell_println(__DATE__, 0x77FF77, false, &OwOSFont_8x16);

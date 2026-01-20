@@ -1,5 +1,5 @@
 #include "rendering.h"
-#include "std.h"
+#include "std/mem.h"
 #include "fonts/font.h"
 #include "fonts/get_bitmap.h"
 

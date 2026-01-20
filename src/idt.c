@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include "std.h"
+#include "std/std.h"
 #include "shell/shell_definitions.h"
 #include "idt.h"
 #include "fonts/OwOSFont_8x16.h"

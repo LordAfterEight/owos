@@ -1,5 +1,5 @@
 #include "timer.h"
-#include "std.h"
+#include "std/std.h"
 #include "rendering.h"
 #include "shell/shell_definitions.h"
 #include "idt.h"

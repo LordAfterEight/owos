@@ -1,5 +1,5 @@
 #include "pcspeaker.h"
-#include "std.h"
+#include "std/std.h"
 
 void play_sound(uint32_t frequency) {
     uint32_t Div;
@@ -18,7 +18,6 @@ void play_sound(uint32_t frequency) {
 
 void nosound() {
     uint8_t tmp = inb(0x61) & 0xFC;
-     
     outb(0x61, tmp);
 }
 
