@@ -131,8 +131,6 @@ int handle_input(volatile struct CommandBuffer* buffer) {
         } else if (strcmp((char*)buffer->buffer[1], "delete")) {
             shell_println("Not yet implemented", 0xFF7777, false, &OwOSFont_8x16);
         } else if (strcmp((char*)buffer->buffer[1], "tree")) {
-            print_dirtree(&root_dir, (char*)buffer->buffer[2]);
-        } else if (strcmp((char*)buffer->buffer[0], "ls")) {
             for (int i = 0; i < root_dir.folder_pointer; i++) {
                 if (root_dir.folders[i] == NULL) continue;
                 char buf[128];
@@ -145,6 +143,26 @@ int handle_input(volatile struct CommandBuffer* buffer) {
                 format(buf, "F %2d: %s", i, root_dir.files[i]->name);
                 shell_println(buf, 0xFFFFAA, false, &OwOSFont_8x16);
             }
+            print_dirtree(&root_dir, (char*)buffer->buffer[2]);
+        } else if (strcmp((char*)buffer->buffer[1], "ls")) {
+            for (int folder_idx = 0; folder_idx < root_dir.folder_pointer; folder_idx++) {
+                if (root_dir.folders[folder_idx] == NULL) continue;
+                if (strcmp((char*)buffer->buffer[2], root_dir.folders[folder_idx]->name)) {
+                    char buf[64];
+                    format(buf, "%s: ", root_dir.folders[folder_idx]->name);
+                    shell_print(buf, 0x7777FF, false, &OwOSFont_8x16);
+                    for (int inner_folders = 0; inner_folders < root_dir.folders[folder_idx]->folder_pointer; inner_folders++) {
+                        if (root_dir.folders[folder_idx]->folders[inner_folders] == NULL) continue;
+                        format(buf, "%s  ", root_dir.folders[folder_idx]->folders[inner_folders]->name);
+                        shell_print(buf, 0x7777FF, false, &OwOSFont_8x16);
+                    }
+                } else if (strcmp((char*)buffer->buffer[2], "")) {
+                    char buf[64];
+                    format(buf, "%s  ", root_dir.folders[folder_idx]->name);
+                    shell_print(buf, 0x7777FF, false, &OwOSFont_8x16);
+                }
+            }
+            shell_println("", false, 0x000000, &OwOSFont_8x16);
         } else if (strcmp((char*)buffer->buffer[1], "help")) {
             shell_println("VFS commands:", 0xAAFFFF, false, &OwOSFont_8x16);
             shell_println(" - new <file/folder> <name>: Create new file or folder with given name", 0xAAFFAA, false ,&OwOSFont_8x16);
