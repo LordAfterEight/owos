@@ -35,21 +35,6 @@ void push_char(volatile struct CommandBuffer* buffer, const char character) {
     buffer->buffer_pos++;
 }
 
-void move_cursor(volatile struct Cursor* cursor, uint8_t value) {
-    cursor->pos_x += value;
-}
-
-void shell_print(const char* text, uint32_t color, bool invert, const struct Font* font) {
-    shell.cursor->pos_y += draw_text_wrapping(shell.cursor->pos_x, shell.cursor->pos_y, text, color, invert, font);
-    move_cursor(shell.cursor, strlen(text) * 8);
-}
-
-void shell_println(const char* text, uint32_t color, bool invert, const struct Font* font) {
-    shell_print(text, color, invert, font);
-    shell.cursor->pos_y += font->height;
-    shell.cursor->pos_x = 1;
-}
-
 void clear_screen() {
     if (shell.cursor == NULL) {
         outb(0x3F8, 'N');  // NULL pointer!

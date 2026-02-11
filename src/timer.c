@@ -13,7 +13,4 @@ void pit_init(uint32_t frequency) {
     outb(PIT_CHANNEL0, divisor & 0xFF);
     outb(PIT_CHANNEL0, divisor >> 8);
     char buf[64];
-    format(buf, "Initialized Programmable Interval Timer with frequency %dHz", frequency);
-    shell_print("[Kernel:PIT] -> ", 0xAAAAAA, false, &OwOSFont_8x16);
-    shell_println(buf, 0xFFFFFF, false, &OwOSFont_8x16);
 }

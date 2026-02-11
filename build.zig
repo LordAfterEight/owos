@@ -45,7 +45,6 @@ pub fn build(b: *std.Build) void {
         .files = &.{
             "src/prerequisites.c",
             "src/rendering.c",
-            "src/shell/shell_definitions.c",
             "src/std/mem.c",
             "src/std/std.c",
             "src/std/string.c",
@@ -75,6 +74,35 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.addAssemblyFile(b.path("src/timer_asm.s"));
+    exe.root_module.addAssemblyFile(b.path("src/start.s"));
+    exe.root_module.addAssemblyFile(b.path("src/enable_sse.s"));
+
+    const manual_opt = b.option([]const u8, "build_date", "Build date string (e.g. \"Feb 11 2026\")");
+
+    const owned_date: []const u8 = if (manual_opt) |m| blk: {
+        // duplicate so the memory is owned by the build allocator
+        break :blk b.allocator.dupe(u8, m) catch @panic("OOM duplicating build_date");
+    } else blk: {
+        const res = std.process.Child.run(.{
+            .allocator = b.allocator,
+            .argv = &.{ "date", "+%b %e %Y" },
+        }) catch |err| std.debug.panic("failed to run `date`: {}", .{err}); // build() can't `try` [web:309]
+
+        defer b.allocator.free(res.stdout);
+        defer b.allocator.free(res.stderr);
+
+        const trimmed = std.mem.trimRight(u8, res.stdout, "\r\n");
+        break :blk b.allocator.dupe(u8, trimmed) catch @panic("OOM copying date stdout");
+    };
+
+    // Make NUL-terminated [:0]const u8 for your Shell.println(text: [:0]const u8, ...)
+    const zbuf = b.allocator.allocSentinel(u8, owned_date.len, 0) catch @panic("OOM allocSentinel(build_date)");
+    @memcpy(zbuf[0..owned_date.len], owned_date);
+    const build_date_z: [:0]const u8 = zbuf[0..owned_date.len :0];
+
+    const options = b.addOptions();
+    options.addOption([:0]const u8, "build_date", build_date_z);
+    exe.root_module.addOptions("build_options", options);
 
     exe.setLinkerScript(b.path("linker.lds"));
     exe.link_gc_sections = false;

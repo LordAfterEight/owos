@@ -3,10 +3,11 @@
 #include "fonts/font.h"
 #include "fonts/get_bitmap.h"
 
-const int SCREEN_WIDTH = 1280;
-const int SCREEN_HEIGHT = 720;
+const int SCREEN_WIDTH = 1920;
+const int SCREEN_HEIGHT = 1080;
 
 volatile uint32_t* global_framebuffer = 0;
+volatile uint64_t draw_rsp_mod16 = 0;
 
 void blit_pixel(int x, int y, uint32_t color) {
     if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
@@ -15,9 +16,9 @@ void blit_pixel(int x, int y, uint32_t color) {
 }
 
 void draw_rect_f(int x, int y, int w, int h, uint32_t color) {
-    uint32_t* dst = global_framebuffer + y * SCREEN_WIDTH + x;
+    volatile uint32_t* dst = global_framebuffer + y * SCREEN_WIDTH + x;
     for (int i = 0; i < h; i++) {
-        owos_memset(dst, color, w * sizeof(uint32_t));
+        owos_memset((void*)dst, color, w * sizeof(uint32_t));
         dst += SCREEN_WIDTH;
     }
 }
@@ -40,6 +41,9 @@ void draw_text(int x, int y, const char* text, uint32_t color, bool inverse, con
 }
 
 int draw_text_wrapping(int x, int y, const char* text, uint32_t color, bool inverse, const struct Font* font) {
+    uintptr_t rsp;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
+    draw_rsp_mod16 = rsp & 0xF;
     int x_offset = 0;
     int y_offset = 0;
     for (size_t i = 0; text[i] != '\0'; i++) {

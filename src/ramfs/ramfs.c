@@ -63,7 +63,6 @@ int move_folder(char* folder_name, char* dest_name) {
         }
     }
     if (src_idx == -1) {
-        shell_println("No such folder to move", 0xFF7777, false, &OwOSFont_8x16);
         return -1;
     }
 
@@ -75,11 +74,9 @@ int move_folder(char* folder_name, char* dest_name) {
         }
     }
     if (dest == NULL) {
-        shell_println("No such destination folder", 0xFF7777, false, &OwOSFont_8x16);
         return -1;
     }
     if (dest->folder_pointer >= MAX_FOLDERS) {
-        shell_println("Destination full", 0xFF7777, false, &OwOSFont_8x16);
         return -1;
     }
 
@@ -93,10 +90,6 @@ int move_folder(char* folder_name, char* dest_name) {
 
     dest->folders[dest->folder_pointer] = moving;
     dest->folder_pointer++;
-
-    char buf[128];
-    format(buf, "Moved %s into %s", dest_name, folder_name);
-    shell_println(buf, 0x77FF77, false, &OwOSFont_8x16);
 
     return 0;
 }

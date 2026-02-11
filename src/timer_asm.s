@@ -6,10 +6,6 @@ timer_handler_asm:
     pushq %rax
     pushq %rdx
 
-    movb $'T', %al
-    movw $0x3F8, %dx
-    outb %al, %dx
-
     incl ticks(%rip)
 
     movb $0x20, %al
