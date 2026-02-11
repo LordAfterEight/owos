@@ -5,8 +5,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-static char* KERNEL_VERSION = "0.2.10";
-static char* KERNEL_NAME = "OwOS-C";
+static char* KERNEL_VERSION = "0.3.0";
+static char* KERNEL_NAME = "OwOS";
 static char* OS_MODEL = "Volatile";
 
 void panic(const char message[]);

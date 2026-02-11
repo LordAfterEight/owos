@@ -3,14 +3,13 @@
 #include "shell/shell_definitions.h"
 #include "idt.h"
 #include "fonts/OwOSFont_8x16.h"
+#include "timer.h"
 
-__attribute__((packed))
 struct IDTEntry idt[256] __attribute__((aligned(16)));
 
-__attribute__((packed))
 struct IDTPointer idt_ptr __attribute__((aligned(16)));
 
-void set_idt_entry(int vector, void *handler, uint8_t ist, uint8_t type_attr) {
+void set_idt_entry(int vector, interrupt_handler_t handler, uint8_t ist, uint8_t type_attr) {
     uint64_t addr = (uint64_t)handler;
 
     idt[vector].offset_low  = addr & 0xFFFF;
@@ -23,7 +22,7 @@ void set_idt_entry(int vector, void *handler, uint8_t ist, uint8_t type_attr) {
     idt[vector].zero        = 0;
 }
 
-bool check_idt_entry(int vector, void *handler, uint8_t ist, uint8_t type_attr) {
+bool check_idt_entry(int vector, interrupt_handler_t handler, uint8_t ist, uint8_t type_attr) {
     uint64_t addr = (uint64_t)handler;
 
     if (
@@ -44,29 +43,29 @@ bool check_idt_entry(int vector, void *handler, uint8_t ist, uint8_t type_attr) 
 void idt_init(void) {
     shell_print("[Kernel:IDT] <- ", 0xAAAAAA, false, &OwOSFont_8x16);
     shell_println("Timer Callback", 0xFFFFFF, false, &OwOSFont_8x16);
-    set_idt_entry(32, timer_callback, 0, 0x8E);
+    set_idt_entry(32, timer_handler_asm, 0, 0x8E);
 
     shell_print("[Kernel:IDT] <- ", 0xAAAAAA, false, &OwOSFont_8x16);
     shell_println("Double Fault Handler", 0xFFFFFF, false, &OwOSFont_8x16);
-    set_idt_entry(8, double_fault_handler, 1, 0x8E);
+    set_idt_entry(8, double_fault_handler, 0, 0x8E);
 
     shell_print("[Kernel:IDT] <- ", 0xAAAAAA, false, &OwOSFont_8x16);
     shell_println("Page Fault Handler", 0xFFFFFF, false, &OwOSFont_8x16);
-    set_idt_entry(14, page_fault_handler, 1, 0x8E);
+    set_idt_entry(14, page_fault_handler, 0, 0x8E);
 
     shell_print("[Kernel:IDT] -> ", 0xAAAAAA, false, &OwOSFont_8x16);
     shell_println("Checking Entries...", 0xFFFF77, false, &OwOSFont_8x16);
 
     shell_print("[Kernel:IDT] -> ", 0xAAAAAA, false, &OwOSFont_8x16);
-    if (check_idt_entry(32, timer_callback, 0, 0x8E)) {
+    if (check_idt_entry(32, timer_handler_asm, 0, 0x8E)) {
         shell_println("Timer Callback [OK]", 0x22FF22, false, &OwOSFont_8x16);
     } else shell_println("Timer Callback [ERR]", 0xFF2222, false, &OwOSFont_8x16);
     shell_print("[Kernel:IDT] -> ", 0xAAAAAA, false, &OwOSFont_8x16);
-    if (check_idt_entry(8, double_fault_handler, 1, 0x8E)) {
+    if (check_idt_entry(8, double_fault_handler, 0, 0x8E)) {
         shell_println("DF Handler [OK]", 0x22FF22, false, &OwOSFont_8x16);
     } else shell_println("DF Handler [ERR]", 0xFF2222, false, &OwOSFont_8x16);
     shell_print("[Kernel:IDT] -> ", 0xAAAAAA, false, &OwOSFont_8x16);
-    if (check_idt_entry(14, page_fault_handler, 1, 0x8E)) {
+    if (check_idt_entry(14, page_fault_handler, 0, 0x8E)) {
         shell_println("PF Handler [OK]", 0x22FF22, false, &OwOSFont_8x16);
     } else shell_println("PF Handler [ERR]", 0xFF2222, false, &OwOSFont_8x16);
     idt_ptr.limit = sizeof(idt) - 1;
@@ -77,42 +76,29 @@ void idt_init(void) {
 
 __attribute__((interrupt))
 void default_handler(struct InterruptFrame* frame) {
-    char buf[64];
-    draw_char(shell.cursor.pos_x, shell.cursor.pos_y + 16, '^', 0x000000, false, &OwOSFont_8x16);
-    shell.cursor.pos_x = 1;
-    shell.cursor.pos_y += OwOSFont_8x16.height;
-    shell_print("[Kernel:IDT] -> ", 0xAA77AA, false, &OwOSFont_8x16);
-    shell_println("Interrupt ocurred", 0xFFFFFF, false, &OwOSFont_8x16);
-    shell_print("Command: ", 0xAAAAAA, false, &OwOSFont_8x16);
+    (void)frame;
+    for(;;) asm volatile("cli; hlt");
 }
 
 __attribute__((interrupt))
-void page_fault_handler(struct InterruptFrame* frame) {
-    panic("Page Fault");
-    asm volatile (
-        "cli                        \n\t"
-        "mov    %%rsp, %%rdi        \n\t"
-        "call   panic_handler_c     \n\t"
-        "1: hlt                     \n\t"
-        "jmp    1b                  \n\t"
-        ::: "memory", "rdi"
-    );
+void default_handler_err(struct InterruptFrame* frame, uint64_t error_code) {
+    (void)frame;
+    (void)error_code;
+    for(;;) asm volatile("cli; hlt");
 }
 
 __attribute__((interrupt))
-void double_fault_handler(struct InterruptFrame* frame) {
-    panic("Double Fault");
-    asm volatile (
-        "cli                        \n\t"
-        "mov    %%rsp, %%rdi        \n\t"
-        "call   panic_handler_c     \n\t"
-        "1: hlt                     \n\t"
-        "jmp    1b                  \n\t"
-        ::: "memory", "rdi"
-    );
+void page_fault_handler(struct InterruptFrame* frame, uint64_t error_code) {
+    (void)error_code;
+    panic_handler_c(frame);
 }
 
-__attribute__((noreturn))
+__attribute__((interrupt))
+void double_fault_handler(struct InterruptFrame* frame, uint64_t error_code) {
+    (void)error_code;
+    panic_handler_c(frame);
+}
+
 void panic_handler_c(struct InterruptFrame* frame) {
     char buf[64];
     format(buf, "Instruction Pointer: 0x%x", frame->ip);

@@ -22,8 +22,8 @@ struct Cursor {
 };
 
 struct Shell {
-    struct CommandBuffer buffer;
-    struct Cursor cursor;
+    volatile struct CommandBuffer* buffer;
+    volatile struct Cursor* cursor;
 };
 
 extern volatile struct CommandBuffer command_buffer;
@@ -34,8 +34,8 @@ extern volatile struct Process shell_process;
 void shell_init();
 void push_char(volatile struct CommandBuffer* buffer, const char character);
 void move_cursor(volatile struct Cursor* cursor, uint8_t value);
-void shell_print(char* text, uint32_t color, bool invert, const struct Font* font);
-void shell_println(char* text, uint32_t color, bool invert, const struct Font* font);
+void shell_print(const char* text, uint32_t color, bool invert, const struct Font* font);
+void shell_println(const char* text, uint32_t color, bool invert, const struct Font* font);
 int handle_input(volatile struct CommandBuffer* buffer);
 int update_buffer();
 void update_cursor();

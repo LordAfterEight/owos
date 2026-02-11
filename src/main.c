@@ -32,7 +32,7 @@ void kmain(void) {
     global_framebuffer = (volatile uint32_t*)framebuffer->address;
 
 
-    clear_screen(&shell);
+    clear_screen();
 
     gdt_init();
 

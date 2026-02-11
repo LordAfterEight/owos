@@ -1,5 +1,4 @@
 #include "rendering.h"
-#include "stdio.h"
 #include "fonts/OwOSFont_8x16.h"
 #include "timer.h"
 #include "sound/pcspeaker.h"

@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 void root_init(struct Folder* root) {
-    memcpy(root->name, "root", sizeof("root"));
+    owos_memcpy(root->name, "root", sizeof("root"));
     root->file_pointer = 0;
     root->folder_pointer = 0;
 
@@ -24,13 +24,13 @@ struct File* new_file(char name[]) {
 
     struct File* f = &file_pool[file_pool_used++];
 
-    memcpy(f->name, name, MAX_NAME_LENGTH);
+    owos_memcpy(f->name, name, MAX_NAME_LENGTH);
     f->name[MAX_NAME_LENGTH - 1] = '\0';
 
     f->length = 0;
     f->data = file_data_pool[file_pool_used - 1];
 
-    memset(f->data, 0, MAX_FILE_DATA);
+    owos_memset(f->data, 0, MAX_FILE_DATA);
 
     return f;
 }
@@ -41,13 +41,13 @@ struct Folder* new_folder(char name[]) {
 
     struct Folder* f = &folder_pool[folder_pool_used++];
 
-    memcpy(f->name, name, MAX_NAME_LENGTH);
+    owos_memcpy(f->name, name, MAX_NAME_LENGTH);
     f->name[MAX_NAME_LENGTH - 1] = '\0';
 
     f->file_pointer = 0;
     f->folder_pointer = 0;
-    memset(f->files,   0, sizeof(f->files));
-    memset(f->folders, 0, sizeof(f->folders));
+    owos_memset(f->files,   0, sizeof(f->files));
+    owos_memset(f->folders, 0, sizeof(f->folders));
 
     return f;
 }
@@ -84,7 +84,7 @@ int move_folder(char* folder_name, char* dest_name) {
     }
 
     if (src_idx < root_dir.folder_pointer - 1) {
-        memmove((void*)&root_dir.folders[src_idx],
+        owos_memmove((void*)&root_dir.folders[src_idx],
                 (void*)&root_dir.folders[src_idx + 1],
                 (root_dir.folder_pointer - src_idx - 1) * sizeof(struct Folder*));
     }

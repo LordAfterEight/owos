@@ -3,8 +3,8 @@
 #include "fonts/font.h"
 #include "fonts/get_bitmap.h"
 
-const int SCREEN_WIDTH = 1920;
-const int SCREEN_HEIGHT = 1080;
+const int SCREEN_WIDTH = 1280;
+const int SCREEN_HEIGHT = 720;
 
 volatile uint32_t* global_framebuffer = 0;
 
@@ -17,7 +17,7 @@ void blit_pixel(int x, int y, uint32_t color) {
 void draw_rect_f(int x, int y, int w, int h, uint32_t color) {
     uint32_t* dst = global_framebuffer + y * SCREEN_WIDTH + x;
     for (int i = 0; i < h; i++) {
-        memset(dst, color, w * sizeof(uint32_t));
+        owos_memset(dst, color, w * sizeof(uint32_t));
         dst += SCREEN_WIDTH;
     }
 }

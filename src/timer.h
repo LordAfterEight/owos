@@ -4,6 +4,7 @@
 #pragma once
 #include <stdint.h>
 #include "shell/shell_definitions.h"
+#include "idt.h"
 
 struct Shell;
 
@@ -11,9 +12,11 @@ struct Shell;
 #define PIT_CMD      0x43
 #define PIT_FREQ     1193182
 
-extern volatile unsigned long ticks;
+extern volatile uint32_t ticks;
 
-void pit_init(struct Shell* shell, uint32_t frequency);
-void timer_callback(void *frame);
+void pit_init(uint32_t frequency);
+
+__attribute__((interrupt))
+void timer_callback(struct InterruptFrame *frame);
 
 #endif

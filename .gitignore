@@ -1,0 +1,4 @@
+qemu.log
+.zig-cache
+zig-out
+owos.iso
