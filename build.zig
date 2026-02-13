@@ -8,7 +8,6 @@ pub fn build(b: *std.Build) void {
         .abi = .none,
     });
 
-    // Module for C imports
     const owos_c_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .link_libc = false,
@@ -19,7 +18,6 @@ pub fn build(b: *std.Build) void {
 
     owos_c_module.addIncludePath(b.path("src"));
 
-    // Executable - create module from main.zig
     const exe = b.addExecutable(.{
         .name = "owos",
         .root_module = b.createModule(.{
@@ -40,7 +38,6 @@ pub fn build(b: *std.Build) void {
     exe.entry = .{ .symbol_name = "_start" };
     exe.addIncludePath(b.path("src"));
 
-    // C sources
     exe.addCSourceFiles(.{
         .files = &.{
             "src/prerequisites.c",
@@ -95,7 +92,6 @@ pub fn build(b: *std.Build) void {
         break :blk b.allocator.dupe(u8, trimmed) catch @panic("OOM copying date stdout");
     };
 
-    // Make NUL-terminated [:0]const u8 for your Shell.println(text: [:0]const u8, ...)
     const zbuf = b.allocator.allocSentinel(u8, owned_date.len, 0) catch @panic("OOM allocSentinel(build_date)");
     @memcpy(zbuf[0..owned_date.len], owned_date);
     const build_date_z: [:0]const u8 = zbuf[0..owned_date.len :0];

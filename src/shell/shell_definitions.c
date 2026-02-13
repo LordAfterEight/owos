@@ -37,7 +37,7 @@ void push_char(volatile struct CommandBuffer* buffer, const char character) {
 
 void clear_screen() {
     if (shell.cursor == NULL) {
-        outb(0x3F8, 'N');  // NULL pointer!
+        outb(0x3F8, 'N');
         while(1) asm volatile("hlt");
     }
     shell.cursor->pos_x = 1;

@@ -1,11 +1,11 @@
 #include <stdbool.h>
-#include <stddef.h>
+#include <stdint.h>
 
-size_t strlen(const char* s) {
+uint32_t strlen(const char* s) {
     const char *p = s;
     while (*p)
         p++;
-    return (size_t)(p - s);
+    return (uint32_t)(p - s);
 }
 
 bool strcmp(const char* a, const char* b) {

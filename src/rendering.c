@@ -2,20 +2,21 @@
 #include "std/mem.h"
 #include "fonts/font.h"
 #include "fonts/get_bitmap.h"
+#include "stdint.h"
 
-const int SCREEN_WIDTH = 1920;
-const int SCREEN_HEIGHT = 1080;
+const uint32_t SCREEN_WIDTH = 1920;
+const uint32_t SCREEN_HEIGHT = 1080;
 
 volatile uint32_t* global_framebuffer = 0;
 volatile uint64_t draw_rsp_mod16 = 0;
 
-void blit_pixel(int x, int y, uint32_t color) {
+void blit_pixel(uint32_t x, uint32_t y, uint32_t color) {
     if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
         global_framebuffer[y * SCREEN_WIDTH + x] = color;
     }
 }
 
-void draw_rect_f(int x, int y, int w, int h, uint32_t color) {
+void draw_rect_f(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     volatile uint32_t* dst = global_framebuffer + y * SCREEN_WIDTH + x;
     for (int i = 0; i < h; i++) {
         owos_memset((void*)dst, color, w * sizeof(uint32_t));
@@ -23,7 +24,7 @@ void draw_rect_f(int x, int y, int w, int h, uint32_t color) {
     }
 }
 
-void draw_text(int x, int y, const char* text, uint32_t color, bool inverse, const struct Font* font) {
+void draw_text(uint32_t x, uint32_t y, const char* text, uint32_t color, bool inverse, const struct Font* font) {
     int char_offset = 0;
     for (size_t i = 0; text[i] != '\0'; i++) {
         const uint8_t* bitmap = get_bitmap(text[i], font);
@@ -40,7 +41,7 @@ void draw_text(int x, int y, const char* text, uint32_t color, bool inverse, con
     }
 }
 
-int draw_text_wrapping(int x, int y, const char* text, uint32_t color, bool inverse, const struct Font* font) {
+int draw_text_wrapping(uint32_t x, uint32_t y, const char* text, uint32_t color, bool inverse, const struct Font* font) {
     uintptr_t rsp;
     __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
     draw_rsp_mod16 = rsp & 0xF;
@@ -67,7 +68,7 @@ int draw_text_wrapping(int x, int y, const char* text, uint32_t color, bool inve
     return y_offset;
 }
 
-void draw_char(int x, int y, const char character, uint32_t color, bool inverse, const struct Font* font) {
+void draw_char(uint32_t x, uint32_t y, const char character, uint32_t color, bool inverse, const struct Font* font) {
     const uint8_t* bitmap = get_bitmap(character, font);
     for (int char_y = 0; char_y < font->height; char_y++) {
         for (int char_x = 0; char_x < 8; char_x++) {

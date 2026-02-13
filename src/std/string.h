@@ -1,5 +1,5 @@
 #include <stdbool.h>
-#include <stddef.h>
+#include <stdint.h>
 
-size_t strlen(const char s[]);
+uint32_t strlen(const char s[]);
 bool strcmp(const char* a, const char* b);

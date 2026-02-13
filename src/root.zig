@@ -19,3 +19,4 @@ pub const c = @cImport({
     @cInclude("fonts/OwOSFont_8x16.h");
 });
 
+pub const serial = @import("serial/serial.zig");
