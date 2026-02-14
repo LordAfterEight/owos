@@ -1,7 +1,6 @@
 const std = @import("std");
-const owos = @import("owos");
+const owos = @import("../root.zig");
 const build_options = @import("build_options");
-const window_lib = @import("../window/window.zig");
 
 pub const CommandBuffer = struct {
     buffer: [16][256:0]u8,
@@ -104,6 +103,8 @@ pub const Shell = struct {
         shell.print("[Kernel:Shl] -> ", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
         shell.println("Initialized", 0x77FF77, false, &owos.c.OwOSFont_8x16);
         shell.newline(&owos.c.OwOSFont_8x16);
+        shell.greet(&owos.c.OwOSFont_8x16);
+        shell.print("Command: ", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
         return shell;
     }
     pub fn greet(self: *Shell, font: *const owos.c.Font) void {
@@ -122,8 +123,9 @@ pub const Shell = struct {
         self.println("OwOS Volatile", 0x77FF77, false, font);
         self.print("Kernel Version: ", 0x7777FF, false, font);
         self.println(cStringToZSlice(owos.c.KERNEL_VERSION), 0x77FF77, false, font);
-        self.print("Build Date: ", 0x7777FF, false, font);
-        self.println(build_options.build_date, 0x77FF77, false, font); // or a literal like "Feb 11 2026"
+        // TODO: Add build date
+        // self.print("Build Date: ", 0x7777FF, false, font);
+        //self.println(build_options.build_date, 0x77FF77, false, font); // or a literal like "Feb 11 2026"
         self.print("Developer: ", 0x7777FF, false, font);
         self.println("Elias Stettmayer", 0x77FF77, false, font);
         self.print("Repository: ", 0x7777FF, false, font);
@@ -138,7 +140,13 @@ pub const Shell = struct {
     pub fn handle_input(self: *Shell) u8 {
         self.cursor.pos_y += 16;
         self.cursor.pos_x = 1;
-        return 0;
+        if (owos.c.strcmp(@ptrCast(&self.buffer.buffer[0]), "exit")) {
+            self.println("Exiting...", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
+            owos.c.msleep(3000);
+            self.clear_clean();
+            return 1;
+        }
+        return 2;
     }
 
     pub fn update_cursor(self: *Shell) void {
@@ -158,7 +166,7 @@ pub const Shell = struct {
 
     pub fn update_buffer(self: *Shell) u8 {
         const c = owos.c.getchar_polling();
-        var result: u8 = 0;
+        var result: u8 = 2;
         if (c != 0) {
             if (c == ' ') {
                 self.buffer.push(0);
@@ -173,6 +181,7 @@ pub const Shell = struct {
                 self.buffer.push(0);
                 result = self.handle_input();
                 _ = owos.c.owos_memset(&self.buffer.buffer, 0, @sizeOf(CommandBuffer));
+                if (result == 1) return 1;
                 self.buffer.buffer_pos = 0;
                 self.buffer.token = 0;
                 self.cursor.pos_x = 1;
@@ -200,14 +209,8 @@ pub const Shell = struct {
         return self.update_buffer();
     }
 
-    pub fn run(self: *Shell) u8 {
-        self.greet(&owos.c.OwOSFont_8x16);
-        self.print("Command: ", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
-        var result = @as(u8, 0);
-        while (result == 0) {
-            result = self.update();
-        }
-        return result;
+    pub fn tick(self: *Shell) u8 {
+        return self.update();
     }
 
     pub fn deinit(self: *Shell) void {

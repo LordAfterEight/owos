@@ -20,3 +20,6 @@ pub const c = @cImport({
 });
 
 pub const serial = @import("serial/serial.zig");
+pub const process = @import("process/process.zig");
+pub const shell = @import("shell/shell_definitions.zig");
+pub const scheduler = @import("scheduler/scheduler.zig");

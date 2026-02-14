@@ -9,6 +9,8 @@ static char* KERNEL_VERSION = "0.3.1";
 static char* KERNEL_NAME = "OwOS";
 static char* OS_MODEL = "Volatile";
 
+extern volatile uint8_t panic_count;
+
 void panic(const char message[]);
 uint8_t inb(uint16_t port);
 void outb(uint16_t port, uint8_t val);
