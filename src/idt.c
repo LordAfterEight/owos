@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include "std/std.h"
-#include "shell/shell_definitions.h"
 #include "idt.h"
 #include "fonts/OwOSFont_8x16.h"
+#include "rendering.h"
 #include "timer.h"
 
 struct IDTEntry idt[256] __attribute__((aligned(16)));

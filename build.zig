@@ -53,7 +53,6 @@ pub fn build(b: *std.Build) void {
             "src/sound/pcspeaker.c",
             "src/drivers/ps2.c",
             "src/fonts/OwOSFont_8x16.c",
-            "src/process/process.c",
             "src/ramfs/ramfs.c",
             "src/limine_requests.c",
         },

@@ -8,12 +8,11 @@ pub const c = @cImport({
     @cInclude("std/std.h");
     @cInclude("gdt.h");
     @cInclude("rendering.h");
-    @cInclude("process/process.h");
-    @cInclude("shell/shell_definitions.h");
     @cInclude("time.h");
     @cInclude("timer.h");
     @cInclude("idt.h");
     @cInclude("pic.h");
+    @cInclude("drivers/ps2.h");
     @cInclude("sound/pcspeaker.h");
     @cInclude("ramfs/ramfs.h");
     @cInclude("fonts/OwOSFont_8x16.h");
@@ -22,4 +21,4 @@ pub const c = @cImport({
 pub const serial = @import("serial/serial.zig");
 pub const process = @import("process/process.zig");
 pub const shell = @import("shell/shell_definitions.zig");
-pub const scheduler = @import("scheduler/scheduler.zig");
+pub const scheduler = @import("scheduler/scheduler_cooperative.zig");

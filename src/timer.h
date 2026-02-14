@@ -3,7 +3,6 @@
 
 #pragma once
 #include <stdint.h>
-#include "shell/shell_definitions.h"
 #include "idt.h"
 
 struct Shell;

@@ -7,11 +7,14 @@
 
 volatile uint8_t panic_count = 0;
 
+void format(char* buf, const char* fmt, ...);
+void msleep(uint64_t);
+
 void panic(const char message[]) {
     //beep(500, 25);
     panic_count++;
-    for (int y = 0; y < SCREEN_HEIGHT-1; y++) {
-        for (int x = 0; x < SCREEN_WIDTH-1; x++) {
+    for (uint32_t y = 0; y < SCREEN_HEIGHT-1; y++) {
+        for (uint32_t x = 0; x < SCREEN_WIDTH-1; x++) {
             blit_pixel(x, y, 0x550000);
         }
     }

@@ -1,7 +1,6 @@
 #include "timer.h"
 #include "std/std.h"
 #include "rendering.h"
-#include "shell/shell_definitions.h"
 #include "idt.h"
 #include "fonts/OwOSFont_8x16.h"
 

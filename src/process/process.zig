@@ -1,5 +1,5 @@
 pub const Process = struct {
-    id: u32,
+    id: usize,
     name: []const u8,
 
     ctx: *const anyopaque,

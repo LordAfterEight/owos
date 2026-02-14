@@ -2,6 +2,7 @@
 #define IDT
 
 #include <stdint.h>
+#include <stdbool.h>
 
 struct IDTEntry {
     uint16_t offset_low;

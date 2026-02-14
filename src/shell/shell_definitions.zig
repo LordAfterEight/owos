@@ -141,10 +141,26 @@ pub const Shell = struct {
         self.cursor.pos_y += 16;
         self.cursor.pos_x = 1;
         if (owos.c.strcmp(@ptrCast(&self.buffer.buffer[0]), "exit")) {
-            self.println("Exiting...", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
-            owos.c.msleep(3000);
-            self.clear_clean();
-            return 1;
+            self.print(" WARNING ", 0xFF5555, true, &owos.c.OwOSFont_8x16);
+            self.println(" Exiting the shell will soft-brick the OS", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
+            self.print("Exit? (y/n) ", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
+            while (true) {
+                const c = owos.c.getchar_polling();
+                if (c != 0) {
+                    if (c == 'y') {
+                        self.print("y", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
+                        self.newline(&owos.c.OwOSFont_8x16);
+                        self.println("Exiting...", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
+                        owos.c.msleep(3000);
+                        self.clear_clean();
+                        return 1;
+                    }
+                    else {
+                        self.println("aborted", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
+                        return 2;
+                    }
+                }
+            }
         }
         return 2;
     }

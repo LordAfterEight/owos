@@ -59,8 +59,7 @@ pub export fn kmain() callconv(.c) noreturn {
     var scheduler = owos.scheduler.CooperativeScheduler.init();
 
     var shell_process = owos.process.Process.init_mut(&owos.shell.Shell.init());
-    shell_process.id = scheduler.process_counter;
 
-    scheduler.add_process(shell_process);
+    scheduler.add_process(&shell_process);
     scheduler.run();
 }

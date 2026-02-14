@@ -2,7 +2,6 @@
 #include "../std/mem.h"
 #include "../std/string.h"
 #include "../std/std.h"
-#include "../shell/shell_definitions.h"
 #include "../fonts/OwOSFont_8x16.h"
 #include <stddef.h>
 
