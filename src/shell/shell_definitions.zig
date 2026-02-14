@@ -162,6 +162,12 @@ pub const Shell = struct {
                     }
                 }
             }
+        } else {
+            var buf = [_]u8{0} ** 32;
+            self.print("Invalid command: ", 0xFF7777, false, &owos.c.OwOSFont_8x16);
+            owos.c.format(&buf, "%s", &self.buffer.buffer[0]);
+            const s:[*:0]u8 = @ptrCast(&buf);
+            self.println(std.mem.span(s), 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
         }
         return 2;
     }
