@@ -40,7 +40,6 @@ pub fn build(b: *std.Build) void {
 
     exe.addCSourceFiles(.{
         .files = &.{
-            "src/prerequisites.c",
             "src/rendering.c",
             "src/std/mem.c",
             "src/std/std.c",
@@ -53,7 +52,6 @@ pub fn build(b: *std.Build) void {
             "src/sound/pcspeaker.c",
             "src/drivers/ps2.c",
             "src/fonts/OwOSFont_8x16.c",
-            "src/ramfs/ramfs.c",
             "src/limine_requests.c",
         },
         .flags = &.{

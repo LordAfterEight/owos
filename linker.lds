@@ -66,6 +66,20 @@ SECTIONS
         *(COMMON)
     } :data
 
+
+    /* Define symbols for the RAM filesystem region */
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    __ramfs_start = .;
+    . = . + 0x40000000; /* Reserve 1 GiB for ramfs */
+    __ramfs_end = .;
+
+    /* Discard .note.* and .eh_frame* since they may cause issues on some hosts. */
+    /DISCARD/ : {
+        *(.eh_frame*)
+        *(.note .note.*)
+    }
+
+
     /* Discard .note.* and .eh_frame* since they may cause issues on some hosts. */
     /DISCARD/ : {
         *(.eh_frame*)

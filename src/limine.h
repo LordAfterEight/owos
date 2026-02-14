@@ -17,7 +17,11 @@
 #ifndef LIMINE_H
 #define LIMINE_H 1
 
+
 #include <stdint.h>
+
+extern volatile uint64_t limine_base_revision[];
+extern volatile struct limine_framebuffer_request framebuffer_request;
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +40,8 @@ extern "C" {
 #define LIMINE_REQUESTS_END_MARKER { 0xadc0e0531bb10d03, 0x9572709f31764c62 }
 
 #define LIMINE_BASE_REVISION(N) { 0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, (N) }
+
+
 
 #define LIMINE_BASE_REVISION_SUPPORTED(VAR) ((VAR)[2] == 0)
 

@@ -7,11 +7,6 @@ fn hcf() noreturn {
     }
 }
 
-
-fn read_rsp() usize {
-    return asm volatile ("" : [out] "={rsp}" (-> usize));
-}
-
 extern fn enable_sse() void;
 
 pub export fn kmain() callconv(.c) noreturn {
@@ -41,7 +36,6 @@ pub export fn kmain() callconv(.c) noreturn {
     owos.c.outb(0x21, owos.c.inb(0x21) & ~@as(u8, 1 << 0));
     owos.serial.println("PIC masked, IRQ0 unmasked\n");
 
-
     owos.c.idt_init();
     owos.serial.println("H: IDT initialized");
 
@@ -58,8 +52,19 @@ pub export fn kmain() callconv(.c) noreturn {
 
     var scheduler = owos.scheduler.CooperativeScheduler.init();
 
-    var shell_process = owos.process.Process.init_mut(&owos.shell.Shell.init());
+    var shell = owos.shell.Shell.init();
+    const taskbar = owos.ui.taskbar.TaskBar.init();
 
+    var shell_process = owos.process.Process.init_mut(&shell);
     scheduler.add_process(&shell_process);
+
+    const memory = owos.fs.RawStorage.init();
+
+    var taskbar_process = owos.process.Process.init_mut(&taskbar);
+    scheduler.add_process(&taskbar_process);
+
+    shell.greet(&owos.c.OwOSFont_8x16);
+    shell.print("Command: ", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
     scheduler.run();
+    _ = memory;
 }
