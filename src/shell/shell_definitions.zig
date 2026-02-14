@@ -145,6 +145,7 @@ pub const Shell = struct {
             self.println(" Exiting the shell will soft-brick the OS", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
             self.print("Exit? (y/n) ", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
             while (true) {
+                asm volatile ("hlt");
                 const c = owos.c.getchar_polling();
                 if (c != 0) {
                     if (c == 'y') {

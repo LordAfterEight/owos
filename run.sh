@@ -4,7 +4,7 @@ zig build
 qemu-system-x86_64 \
     -cdrom owos.iso \
     -serial stdio \
-    -d int,cpu_reset \
+    #-d int,cpu_reset \
+    #-D qemu.log \
     -no-reboot \
-    -D qemu.log \
     -m 256M
