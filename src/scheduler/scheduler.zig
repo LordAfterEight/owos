@@ -15,7 +15,7 @@ pub const CooperativeScheduler = struct {
             .process_counter = 0,
         };
 
-        owos.serial.println("Initialized preemptive scheduler");
+        owos.serial.println("Initialized cooperative scheduler");
 
         return scheduler;
     }
