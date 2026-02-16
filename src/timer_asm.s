@@ -3,6 +3,7 @@
 .extern ticks
 
 timer_handler_asm:
+    cli
     pushq %rax
     pushq %rdx
 
@@ -13,4 +14,5 @@ timer_handler_asm:
 
     popq %rdx
     popq %rax
+    sti
     iretq

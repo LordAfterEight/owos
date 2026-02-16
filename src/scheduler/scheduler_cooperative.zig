@@ -41,58 +41,52 @@ pub const CooperativeScheduler = struct {
                 owos.serial.print("\" with PID:");
                 owos.serial.print_dec_usize(proc.id);
                 owos.serial.println(" to cooperative scheduler");
-                var shell = owos.std.get_process_as(owos.shell.Shell, 0).?;
-                shell.print("[PROC: ", 0x7777FF, false, &owos.c.OwOSFont_8x16);
-                shell.print(self.processes[proc.id].?.name, 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
-                shell.print("]", 0x7777FF, false, &owos.c.OwOSFont_8x16);
-                shell.println(" -> Initialized", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
                 break;
             }
         }
     }
 
     pub fn kill_process(self: *CooperativeScheduler, pid: usize) void {
-        var shell = owos.std.get_process_as(owos.shell.Shell, 0).?;
         if (self.processes[pid] != null) {
-            const proc_name = self.processes[pid].?.name;
             self.processes[pid] = null;
-            shell.print("Killed process: ", 0xFF7777, false, &owos.c.OwOSFont_8x16);
-            shell.println(proc_name, 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
         } else {
-            shell.print("No process with id: ", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
-            var buf = [_:0]u8{0} ** 5;
-            owos.c.format(@ptrCast(&buf), "%d", pid);
-            shell.println(&buf, 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
         }
     }
 
-    pub fn tick(self: *CooperativeScheduler) Result {
+    pub fn tick(self: *CooperativeScheduler) u8 {
         for (0..MAX_PROCESSES) |slot| {
-            if (self.processes[slot] != null and self.processes[slot].?.running == true) {
-                const proc_result = self.processes[slot].?.tick();
-                if (proc_result == 1 or proc_result == 0) {
-                    const id = self.processes[slot].?.id;
-                    self.processes[self.processes[slot].?.id] = null;
-                    self.process_counter -= 1;
-                    return Result {.exit_code = proc_result, .pid = id};
+            if (self.processes[slot]) |proc| {
+                if (proc.running) {
+                    const proc_result = proc.tick() catch |err| {
+                        owos.serial.print("Process crashed with error: ");
+                        owos.serial.print(@errorName(err));
+                        self.kill_process(slot);
+                        continue;
+                    };
+
+                    if (proc_result == 0 or proc_result == 1) {
+                        self.kill_process(slot);
+                        self.process_counter -= 1;
+                        return proc_result;
+                    }
                 }
             }
         }
-        return Result {.exit_code = 2, .pid = 255};
+        return 2;
+    }
+
+
+    pub fn scheduler_run(self: *CooperativeScheduler) callconv(.withStackAlign(.c, 16)) noreturn {
+        owos.serial.println("Started cooperative scheduler");
+        var exit_code: u8 = 2;
+        while (exit_code == 2) {
+            asm volatile ("hlt;");
+            exit_code = self.tick();
+        }
+        while (true) asm volatile ("cli; hlt");
     }
 
     pub fn run(self: *CooperativeScheduler) noreturn {
-        owos.serial.println("Started cooperative scheduler");
-        var result: Result = Result {.exit_code = 2, .pid = 255};
-        while (result.exit_code == 2) {
-            asm volatile ("hlt");
-            result = self.tick();
-            if (result.pid != 255) {
-                owos.serial.print("Process PID:");
-                owos.serial.print_dec_usize(result.pid);
-                owos.serial.println(" stopped");
-            }
-        }
-        while (true) asm volatile ("hlt");
+        scheduler_run(self);
     }
 };

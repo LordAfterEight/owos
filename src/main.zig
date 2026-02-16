@@ -7,9 +7,20 @@ fn hcf() noreturn {
     }
 }
 
+
+pub const std_options: std.Options = .{
+    .page_size_min = 4096,
+    .page_size_max = 4096,
+};
+
+var kernel_memory: [100 * 1024]u8 = undefined;
+
+
 extern fn enable_sse() void;
 
-pub export fn kmain() callconv(.c) noreturn {
+var scheduler: *owos.scheduler.CooperativeScheduler = undefined;
+
+export fn kmain() callconv(.c) noreturn {
     enable_sse();
     owos.serial.println("A: kmain started");
     if (owos.c.limine_base_revision[2] != 0) hcf();
@@ -50,21 +61,24 @@ pub export fn kmain() callconv(.c) noreturn {
     asm volatile ("sti");
     owos.serial.println("L: Interrupts enabled");
 
-    var scheduler = owos.scheduler.CooperativeScheduler.init();
+    var fba = std.heap.FixedBufferAllocator.init(&kernel_memory);
+    const allocator = fba.allocator();
 
-    var shell = owos.shell.Shell.init();
-    const taskbar = owos.ui.taskbar.TaskBar.init();
+    scheduler = owos.scheduler.CooperativeScheduler.init();
 
-    var shell_process = owos.process.Process.init_mut(&shell);
-    scheduler.add_process(&shell_process);
+    var owm = owos.process.Process.init(
+        owos.ui.owm.WindowManager,
+        allocator,
+        .{ "OWM" }
+    ) catch unreachable;
 
-    const memory = owos.fs.RawStorage.init();
+    scheduler.add_process(&owm);
 
-    var taskbar_process = owos.process.Process.init_mut(&taskbar);
-    scheduler.add_process(&taskbar_process);
+    const rsp = asm volatile ("mov %%rsp, %[ret]" : [ret] "=r" (-> u64));
+    owos.serial.print("RSP before run(): 0x");
+    owos.serial.print_hex_u64(rsp);
+    owos.serial.println("");
 
-    shell.greet(&owos.c.OwOSFont_8x16);
-    shell.print("Command: ", 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
     scheduler.run();
-    _ = memory;
+    hcf();
 }

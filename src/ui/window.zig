@@ -1,8 +1,15 @@
 const std = @import("std");
 const owos = @import("../root.zig");
 
+pub const DrawCall = enum {
+    DrawRectF,
+    DrawRect,
+    DrawText,
+};
+
 pub const Window = struct {
     name: [:0]const u8,
+    draw_queue: [64]?DrawCall,
     pos_x: u32,
     pos_y: u32,
     width: u32,
@@ -20,6 +27,7 @@ pub const Window = struct {
     pub fn init(name: [:0]const u8) Window {
         return Window{
             .name = name,
+            .draw_queue = undefined,
             .pos_x = 800,
             .pos_y = 200,
             .width = 400,
@@ -44,7 +52,7 @@ pub const Window = struct {
         _ = self;
     }
 
-    pub fn tick(self: Window) u8 {
+    pub fn tick(self: Window) anyerror!u8 {
         owos.c.draw_rect_f(self.pos_x, self.pos_y, self.width, self.height, self.bg_col);
         owos.c.draw_rect_f(self.pos_x, self.pos_y, self.width, 20, self.titlebar_col);
 

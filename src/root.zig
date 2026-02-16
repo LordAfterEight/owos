@@ -1,4 +1,3 @@
-//! By convention, root.zig is the root source file when making a library.
 const zig_std = @import("std");
 
 pub const c = @cImport({
@@ -24,6 +23,9 @@ pub const scheduler = @import("scheduler/scheduler_cooperative.zig");
 pub const ui = struct{
     pub const taskbar = @import("ui/taskbar.zig");
     pub const window = @import("ui/window.zig");
+    pub const mouse = @import("ui/mouse.zig");
+    /// OwOS default window manager
+    pub const owm = @import("ui/owm.zig");
 };
 pub const std = @import("std/std.zig");
 pub const fs = @import("ramfs/ramfs.zig");

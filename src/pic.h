@@ -15,3 +15,4 @@
 #define ICW4_8086  0x01
 
 void pic_remap(void);
+void pic_send_eoi(uint8_t irq);

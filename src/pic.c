@@ -24,3 +24,9 @@ void pic_remap(void) {
     outb(PIC1_DATA, a1); io_wait();
     outb(PIC2_DATA, a2); io_wait();
 }
+
+void pic_eoi(uint8_t irq) {
+    if(irq >= 8) outb(0xA0, 0x20);
+    outb(0x20, 0x20);
+
+}

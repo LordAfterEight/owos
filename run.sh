@@ -7,5 +7,6 @@ qemu-system-x86_64 \
     -serial stdio \
     -no-reboot \
     -m 2G \
+    -device virtio-vga \
     #-d int,cpu_reset \
     #-D qemu.log \

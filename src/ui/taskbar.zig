@@ -9,8 +9,8 @@ pub const TaskBar = struct {
 
     pub fn init() TaskBar {
         owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 24, owos.c.SCREEN_WIDTH, 24, 0x202020);
-            owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 24, owos.c.SCREEN_WIDTH, 1, 0x2F2F2F);
-        var taskbar = TaskBar {
+        owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 24, owos.c.SCREEN_WIDTH, 1, 0x2F2F2F);
+        var taskbar = TaskBar{
             .name = "Taskbar",
             .bg_col = 0x202020,
             .fg_col = 0xAAAAAA,
@@ -61,14 +61,32 @@ pub const TaskBar = struct {
         );
     }
 
-
     pub fn tick(self: *TaskBar) u8 {
-        if (owos.c.ticks % 1000 == 0) {
-            owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 24, owos.c.SCREEN_WIDTH, 24, 0x202020);
-            owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 24, owos.c.SCREEN_WIDTH, 1, 0x2F2F2F);
+        if (owos.c.ticks % 500 == 0) {
+            owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 25, owos.c.SCREEN_WIDTH, 24, 0x202020);
+            owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 25, owos.c.SCREEN_WIDTH, 1, 0x2F2F2F);
             owos.c.draw_text(5, owos.c.SCREEN_HEIGHT - 20, owos.c.KERNEL_NAME, 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
             owos.c.draw_text(5 + owos.c.strlen(owos.c.KERNEL_NAME) * 8 + 8, owos.c.SCREEN_HEIGHT - 20, owos.c.OS_MODEL, 0xAAAAAA, false, &owos.c.OwOSFont_8x16);
             self.draw_clock();
+        }
+        for (0..owos.scheduler.global_scheduler.processes.len) |slot| {
+            if (owos.scheduler.global_scheduler.processes[slot] != null) {
+                owos.c.draw_rect_f(
+                    150 + @as(u32, @intCast(slot * owos.scheduler.global_scheduler.processes[slot].?.name.len * 20)),
+                    owos.c.SCREEN_HEIGHT - 25,
+                    @as(u32, @intCast(owos.scheduler.global_scheduler.processes[slot].?.name.len)) * 8 + 16,
+                    25,
+                    0x3F3F3F
+                );
+                owos.c.draw_text(
+                    150 + @as(u32, @intCast(slot * owos.scheduler.global_scheduler.processes[slot].?.name.len * 20)) + 8,
+                    owos.c.SCREEN_HEIGHT - 20,
+                    owos.scheduler.global_scheduler.processes[slot].?.name,
+                    0xAAAAAA,
+                    false,
+                    &owos.c.OwOSFont_8x16
+                );
+            }
         }
         return 2;
     }
@@ -77,4 +95,3 @@ pub const TaskBar = struct {
         self.time = [_]u8{0} ** 64;
     }
 };
-
