@@ -65,13 +65,14 @@ pub const Process = struct {
         errdefer allocator.destroy(app_ptr);
 
         app_ptr.* = @call(.auto, App.init, args);
+        app_ptr.*.once();
 
         return .{
             .name = app_ptr.name,
             .id = undefined,
             .allocator = allocator,
             .running = true,
-            .ctx = app_ptr,
+            .ctx = @constCast(app_ptr),
             .vtable = appVTable(App),
         };
     }
@@ -93,7 +94,7 @@ pub const Process = struct {
         return self.vtable.once(self.ctx);
     }
 
-    pub fn tick(self: *Process) !u8 {
+    pub fn tick(self: *Process) anyerror!u8 {
         return self.vtable.tick(self.ctx);
     }
 };

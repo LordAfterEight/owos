@@ -19,7 +19,10 @@ void blit_pixel(uint32_t x, uint32_t y, uint32_t color) {
 void draw_rect_f(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     volatile uint32_t* dst = global_framebuffer + y * SCREEN_WIDTH + x;
     for (int i = 0; i < h; i++) {
-        owos_memset((void*)dst, color, w * sizeof(uint32_t));
+        volatile uint32_t* row = dst;
+        for (int j = 0; j < w; j++) {
+            *row++ = color;
+        }
         dst += SCREEN_WIDTH;
     }
 }

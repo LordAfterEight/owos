@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
-#include "std.h"
+#include "mem.h"
 
 void *owos_memcpy(void *restrict dest, const void *restrict src, size_t n) {
     uint8_t *restrict pdest = (uint8_t *restrict)dest;
@@ -13,6 +13,7 @@ void *owos_memcpy(void *restrict dest, const void *restrict src, size_t n) {
 
 void *owos_memset(void *s, int c, size_t n) {
     uint8_t *p = (uint8_t *)s;
+    if (owos_memcmp(s, p, n)) return s;
     for (size_t i = 0; i < n; i++) {
         p[i] = (uint8_t)c;
     }
@@ -35,7 +36,7 @@ void *owos_memmove(void *dest, const void *src, size_t n) {
     return dest;
 }
 
-int memcmp(const void *s1, const void *s2, size_t n) {
+int owos_memcmp(const void *s1, const void *s2, size_t n) {
     const uint8_t *p1 = (const uint8_t *)s1;
     const uint8_t *p2 = (const uint8_t *)s2;
     for (size_t i = 0; i < n; i++) {

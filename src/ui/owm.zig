@@ -9,7 +9,7 @@ pub const WindowManager = struct {
     pub fn init(stub: [:0]const u8) WindowManager {
         _ = stub;
         return WindowManager {
-            .name = "OWM",
+            .name = "OwOS Window Manager",
             .windows = .{null} ** 16,
         };
     }

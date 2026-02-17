@@ -7,6 +7,7 @@ pub var global_scheduler: CooperativeScheduler = .{
 };
 
 const MAX_PROCESSES: usize = 16;
+const MAX_ROUNDS_PER_TICK: usize = 10;
 
 const Result = struct {
     exit_code: u8,
@@ -75,13 +76,34 @@ pub const CooperativeScheduler = struct {
         return 2;
     }
 
-
-    pub fn scheduler_run(self: *CooperativeScheduler) callconv(.withStackAlign(.c, 16)) noreturn {
+    pub fn scheduler_run(self: *CooperativeScheduler) noreturn {
         owos.serial.println("Started cooperative scheduler");
         var exit_code: u8 = 2;
         while (exit_code == 2) {
+            var rounds: u8 = 0;
+            repeat: while (rounds < MAX_ROUNDS_PER_TICK) {
+                var did_work = false;
+                for (0..MAX_PROCESSES) |slot| {
+                    if (self.processes[slot]) |proc| {
+                        if (proc.running) {
+                            const proc_result = proc.tick() catch |err| {
+                                owos.serial.print("Error ocurred: ");
+                                owos.serial.println(@errorName(err));
+                                continue;
+                            };
+                            if (proc_result == 0 or proc_result == 1) {
+                                // ... kill process
+                                exit_code = proc_result;
+                                break :repeat;
+                            }
+                            did_work = true;
+                        }
+                    }
+                }
+                if (!did_work) break :repeat;
+                rounds += 1;
+            }
             asm volatile ("hlt;");
-            exit_code = self.tick();
         }
         while (true) asm volatile ("cli; hlt");
     }
