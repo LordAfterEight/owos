@@ -11,8 +11,10 @@ extern const uint32_t SCREEN_WIDTH;
 extern const uint32_t SCREEN_HEIGHT;
 
 extern volatile uint32_t* global_framebuffer;
+extern volatile uint32_t back_buffer[];
 extern volatile uint64_t draw_rsp_mod16;
 
+void swap_buffers();
 void blit_pixel(uint32_t x, uint32_t y, uint32_t color);
 void draw_rect_f(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);
 void draw_text(uint32_t x, uint32_t y, const char* text, uint32_t color, bool inverse, const struct Font* font);

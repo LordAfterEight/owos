@@ -8,16 +8,21 @@ const uint32_t SCREEN_WIDTH = 1920;
 const uint32_t SCREEN_HEIGHT = 1080;
 
 volatile uint32_t* global_framebuffer = 0;
+volatile uint32_t back_buffer[SCREEN_WIDTH * SCREEN_HEIGHT] = {0};
 volatile uint64_t draw_rsp_mod16 = 0;
+
+void swap_buffers() {
+    owos_memcpy(global_framebuffer, back_buffer, sizeof back_buffer);
+}
 
 void blit_pixel(uint32_t x, uint32_t y, uint32_t color) {
     if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
-        global_framebuffer[y * SCREEN_WIDTH + x] = color;
+        back_buffer[y * SCREEN_WIDTH + x] = color;
     }
 }
 
 void draw_rect_f(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
-    volatile uint32_t* dst = global_framebuffer + y * SCREEN_WIDTH + x;
+    volatile uint32_t* dst = back_buffer + y * SCREEN_WIDTH + x;
     for (int i = 0; i < h; i++) {
         volatile uint32_t* row = dst;
         for (int j = 0; j < w; j++) {

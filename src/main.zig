@@ -72,15 +72,14 @@ export fn kmain() callconv(.c) noreturn {
         .{ "OwOS Window Manager" }
     ) catch unreachable;
 
-    var window = owos.process.Process.init(
-        owos.ui.window.Window,
+    var shell = owos.process.Process.init(
+        owos.shell.Shell,
         allocator,
-        .{ "TestWindow" }
+        .{ "Shelly" }
     ) catch unreachable;
 
     scheduler.add_process(&owm);
-    scheduler.add_process(&window);
-
+    scheduler.add_process(&shell);
 
     const rsp = asm volatile ("mov %%rsp, %[ret]" : [ret] "=r" (-> u64));
     owos.serial.print("RSP before run(): 0x");
@@ -88,5 +87,4 @@ export fn kmain() callconv(.c) noreturn {
     owos.serial.println("");
 
     scheduler.run();
-    hcf();
 }

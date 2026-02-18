@@ -72,8 +72,6 @@ void read_rtc() {
 
     registerB = get_RTC_register(0x0B);
 
-    // Convert BCD to binary values if necessary
-
     if (!(registerB & 0x04)) {
         second = (second & 0x0F) + ((second / 16) * 10);
         minute = (minute & 0x0F) + ((minute / 16) * 10);
