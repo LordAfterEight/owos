@@ -13,7 +13,7 @@ pub const std_options: std.Options = .{
     .page_size_max = 4096,
 };
 
-var kernel_memory: [100 * 1024]u8 = undefined;
+var kernel_memory: [1024 * 1024 * 1024]u8 = undefined;
 
 
 extern fn enable_sse() void;
@@ -61,8 +61,10 @@ export fn kmain() callconv(.c) noreturn {
     asm volatile ("sti");
     owos.serial.println("L: Interrupts enabled");
 
+    owos.c.draw_text(0, 0, "Reserving 1GiB of RAM...", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
     var fba = std.heap.FixedBufferAllocator.init(&kernel_memory);
     const allocator = fba.allocator();
+    owos.c.draw_text(0, 16, "Done", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
 
     scheduler = owos.scheduler.CooperativeScheduler.init();
 
@@ -78,7 +80,18 @@ export fn kmain() callconv(.c) noreturn {
         .{ "Shelly" }
     ) catch unreachable;
 
+    var taskbar = owos.process.Process.init(
+        owos.ui.taskbar.TaskBar,
+        allocator,
+        .{ "Taskbar" }
+    ) catch unreachable;
+
+    //_ = owos.c.owos_memcpy(@ptrCast(@volatileCast(&owos.c.back_buffer.*)), @ptrCast(&owos.c.wallpaper.*), 1920*1080*4);
+    for (0..owos.c.SCREEN_HEIGHT*owos.c.SCREEN_WIDTH) |i| {
+        owos.c.back_buffer[i] = 0x008080;
+    }
     scheduler.add_process(&owm);
+    scheduler.add_process(&taskbar);
     scheduler.add_process(&shell);
 
     const rsp = asm volatile ("mov %%rsp, %[ret]" : [ret] "=r" (-> u64));

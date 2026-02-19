@@ -39,9 +39,6 @@ pub const WindowManager = struct {
             for (0..self.windows.len) |slot| {
                 if (self.windows[slot]) |window_ptr| {
                     if (window_ptr.dirty) {
-                        owos.serial.print("Window '");
-                        owos.serial.print(window_ptr.name);
-                        owos.serial.println("' is dirty, redrawing");
                         window_ptr.redraw();
                         owos.c.swap_buffers();
                         window_ptr.dirty = false;

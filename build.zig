@@ -50,6 +50,7 @@ pub fn build(b: *std.Build) void {
             "src/idt.c",
             "src/pic.c",
             "src/sound/pcspeaker.c",
+            "src/ui/wallpaper.c",
             "src/drivers/ps2.c",
             "src/fonts/OwOSFont_8x16.c",
             "src/limine_requests.c",
