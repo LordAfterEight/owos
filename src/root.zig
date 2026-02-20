@@ -16,6 +16,7 @@ pub const c = @cImport({
     @cInclude("sound/pcspeaker.h");
     @cInclude("fonts/get_bitmap.h");
     @cInclude("fonts/OwOSFont_8x16.h");
+    @cInclude("fonts/icons.h");
 });
 
 pub const serial = @import("serial/serial.zig");

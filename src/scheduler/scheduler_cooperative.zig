@@ -7,12 +7,8 @@ pub var global_scheduler: CooperativeScheduler = .{
 };
 
 const MAX_PROCESSES: usize = 16;
-const MAX_ROUNDS_PER_TICK: usize = 100;
 
-const Result = struct {
-    exit_code: u8,
-    pid: usize
-};
+const Result = struct { exit_code: u8, pid: usize };
 
 pub const CooperativeScheduler = struct {
     processes: [MAX_PROCESSES]?*owos.process.Process,
@@ -28,7 +24,7 @@ pub const CooperativeScheduler = struct {
         for (0..MAX_PROCESSES) |slot| {
             owos.serial.print("Checking slot: ");
             owos.serial.print_dec_usize(slot);
-                owos.serial.print("... ");
+            owos.serial.print("... ");
             if (self.processes[slot] != null) {
                 owos.serial.print("Occupied by process: ");
                 owos.serial.println(self.processes[slot].?.name);
@@ -50,8 +46,7 @@ pub const CooperativeScheduler = struct {
     pub fn kill_process(self: *CooperativeScheduler, pid: usize) void {
         if (self.processes[pid] != null) {
             self.processes[pid] = null;
-        } else {
-        }
+        } else {}
     }
 
     pub fn tick(self: *CooperativeScheduler) u8 {
@@ -79,30 +74,28 @@ pub const CooperativeScheduler = struct {
     pub fn scheduler_run(self: *CooperativeScheduler) noreturn {
         owos.serial.println("Started cooperative scheduler");
         var exit_code: u8 = 2;
+        var last_tick: u64 = owos.c.ticks;
+
         while (exit_code == 2) {
-            var rounds: u8 = 0;
-            asm volatile ("hlt;");
-            repeat: while (rounds < MAX_ROUNDS_PER_TICK) {
-                var did_work = false;
-                for (0..MAX_PROCESSES) |slot| {
-                    if (self.processes[slot]) |proc| {
-                        if (proc.running) {
-                            const proc_result = proc.tick() catch |err| {
-                                owos.serial.print("Error ocurred: ");
-                                owos.serial.println(@errorName(err));
-                                continue;
-                            };
-                            if (proc_result == 0 or proc_result == 1) {
-                                exit_code = proc_result;
-                                break :repeat;
-                            }
-                            did_work = true;
+            for (0..MAX_PROCESSES) |slot| {
+                if (self.processes[slot]) |proc| {
+                    if (proc.running) {
+                        const proc_result = proc.tick() catch |err| {
+                            owos.serial.print("Error ocurred: ");
+                            owos.serial.println(@errorName(err));
+                            continue;
+                        };
+                        if (proc_result == 0 or proc_result == 1) {
+                            exit_code = proc_result;
+                            // Handle process kill logic here
                         }
                     }
                 }
-                if (!did_work) break :repeat;
-                rounds += 1;
             }
+            while (owos.c.ticks == last_tick) {
+                asm volatile ("hlt" ::: .{ .memory = true });
+            }
+            last_tick = owos.c.ticks;
         }
         while (true) asm volatile ("cli; hlt");
     }

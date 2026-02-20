@@ -2,7 +2,7 @@ const owos = @import("../root.zig");
 const std = @import("std");
 
 pub const Process = struct {
-    name: []const u8,
+    name: [:0]const u8,
     id: usize,
     allocator: std.mem.Allocator,
     running: bool,

@@ -25,7 +25,7 @@ pub const TaskBar = struct {
             .fg_col = 0xFFFFFF,
             .title_col = 0xCCCCCC,
             .titlebar_col = 0xB3B1AA,
-            .titlebar_inner_col = 0x474747,
+            .titlebar_inner_col = 0x505050,
             .border_col = 0xB3B1AA,
             .border_size = 4,
             .has_border = true,
@@ -51,7 +51,7 @@ pub const TaskBar = struct {
             owos.c.SCREEN_WIDTH - @as(u32, @intCast(len0 * 8 + 5)),
             owos.c.SCREEN_HEIGHT - 20,
             @ptrCast(&self.time),
-            self.bg_col,
+            self.titlebar_inner_col,
             false,
             &owos.c.OwOSFont_8x16,
         );
@@ -100,7 +100,7 @@ pub const TaskBar = struct {
 
     pub fn tick(self: *TaskBar) u8 {
         if (self.last_render_tick - owos.c.ticks >= 16) {
-            owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 37, owos.c.SCREEN_WIDTH, 37, self.bg_col);
+            owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 37, owos.c.SCREEN_WIDTH, 37, self.titlebar_inner_col);
             owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 37, owos.c.SCREEN_WIDTH, 1, self.light_edge_color);
             owos.c.draw_text(5, owos.c.SCREEN_HEIGHT - 26, owos.c.KERNEL_NAME, self.fg_col, false, &owos.c.OwOSFont_8x16);
             owos.c.draw_text(5 + owos.c.strlen(owos.c.KERNEL_NAME) * 8 + 8, owos.c.SCREEN_HEIGHT - 26, owos.c.OS_MODEL, self.fg_col, false, &owos.c.OwOSFont_8x16);
@@ -114,7 +114,7 @@ pub const TaskBar = struct {
                         owos.c.SCREEN_HEIGHT - 33,
                         @as(u32, @intCast(owos.scheduler.global_scheduler.processes[slot].?.name.len)) * 8 + 16,
                         28,
-                        self.titlebar_inner_col
+                        self.bg_col
                     );
                     // top inner shadow
                     owos.c.draw_rect_f(
@@ -159,7 +159,6 @@ pub const TaskBar = struct {
                     );
                 }
             }
-            owos.c.swap_buffers();
         }
         return 2;
     }

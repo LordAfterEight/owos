@@ -5,12 +5,14 @@ pub var owm_global: ?*WindowManager = null;
 pub const WindowManager = struct {
     name: [:0]const u8,
     windows: [16]?*owos.ui.window.Window,
+    last_tick: u32,
 
     pub fn init(stub: [:0]const u8) WindowManager {
         _ = stub;
         return WindowManager {
             .name = "OwOS Window Manager",
             .windows = .{null} ** 16,
+            .last_tick = 0,
         };
     }
 
@@ -35,8 +37,20 @@ pub const WindowManager = struct {
     }
 
     pub fn tick(self: *WindowManager) anyerror!u8 {
-        if (owos.c.ticks % 16 == 0) {
-            _ = owos.c.owos_memcpy(@volatileCast(@ptrCast(&owos.c.back_buffer.*)), @ptrCast(&owos.c.wallpaper.*), 1920*1040*4);
+        var desktop_dirty = false;
+        for (self.windows) |maybe_window| {
+            if (maybe_window) |win| {
+                if (win.dirty) {
+                    win.redraw();
+                    win.dirty = false;
+                    desktop_dirty = true;
+                }
+            }
+        }
+
+        if (desktop_dirty and owos.c.ticks - self.last_tick >= 16) {
+            self.last_tick = owos.c.ticks;
+            //_ = owos.c.owos_memcpy(@volatileCast(@ptrCast(&owos.c.back_buffer.*)), @ptrCast(&owos.c.wallpaper.*), 1920*1040*4);
 
             for (self.windows) |maybe_window| {
                 if (maybe_window) |win| {
@@ -48,9 +62,9 @@ pub const WindowManager = struct {
                     const win_x: i32 = @intCast(win.pos_x);
                     const win_y: i32 = @intCast(win.pos_y);
                     const win_w: i32 = @intCast(win.width);
-                    const win_h: i32 = @intCast(win.height);
-                    const screen_w: i32 = @as(i32, @intCast(owos.c.SCREEN_WIDTH));
-                    const screen_h: i32 = @as(i32, @intCast(owos.c.SCREEN_HEIGHT));
+                    //const win_h: i32 = @intCast(win.height);
+                    const screen_w: i32 = @intCast(owos.c.SCREEN_WIDTH);
+                    const screen_h: i32 = @intCast(owos.c.SCREEN_HEIGHT);
 
                     for (0..win.height) |y_usize| {
                         const y: i32 = @intCast(y_usize);
@@ -84,12 +98,13 @@ pub const WindowManager = struct {
                             win.framebuffer[src_idx .. src_idx + copy_len]
                         );
                     }
-                    _ = win_h;
                 }
             }
+
             owos.c.swap_buffers();
         }
         return 2;
     }
+
 
 };

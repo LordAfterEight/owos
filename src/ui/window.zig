@@ -51,19 +51,23 @@ pub const Window = struct {
     shadow_size: u8,
     light_edge_color: u32,
     dark_edge_color: u32,
+    button_text_color: u32,
+
+    has_close_button: bool,
+    has_minimize_button: bool,
 
     process: *owos.process.Process,
     last_render_tick: u32,
     ticks_per_frame: u32,
     dirty: bool,
 
-    pub fn init(name: [:0]const u8, w: u32, h: u32) Window {
+    pub fn init(name: [:0]const u8, x: u32, y: u32, w: u32, h: u32) Window {
         return Window{
             .name = name,
             .draw_queue = [_]?DrawCall{null} ** 4096,
             .draw_queue_counter = 0,
-            .pos_x = 200,
-            .pos_y = 200,
+            .pos_x = x,
+            .pos_y = y,
             .width = w,
             .height = h,
             .framebuffer = owos.allocator.global_alloc.alloc(u32, w * h) catch unreachable,
@@ -71,20 +75,34 @@ pub const Window = struct {
             .bg_col = 0x8A8984,
             .title_col = 0xCCCCCC,
             .titlebar_col = 0xB3B1AA,
-            .titlebar_inner_col = 0x474747,
+            .titlebar_inner_col = 0x000070,
             .border_col = 0xB3B1AA,
             .border_size = 4,
             .has_border = true,
             .inner_shadow = true,
             .shadow_size = 5,
-            .light_edge_color = 0xBBBBBB,
+            .light_edge_color = 0xCCCCCC,
             .dark_edge_color = 0x444444,
+            .button_text_color = 0x101010,
+
+            .has_close_button = true,
+            .has_minimize_button = true,
 
             .process = undefined,
             .last_render_tick = 0,
             .ticks_per_frame = 16,
             .dirty = true,
         };
+    }
+
+    pub fn draw_close_button(self: *Window) void {
+        const x_pos = self.width - self.border_size - 18;
+        self.draw_rect_f_inner(x_pos, 4, 18, 17, self.border_col); // bg
+        self.draw_rect_f_inner(x_pos, 4, 1, 17, self.light_edge_color); // left chamfer
+        self.draw_rect_f_inner(x_pos, 4, 18, 1, self.light_edge_color); // top chamfer
+        self.draw_rect_f_inner(x_pos + 17, 4, 1, 17, self.dark_edge_color); // right shadow
+        self.draw_rect_f_inner(x_pos, 21, 18, 1, self.dark_edge_color); // bottom shadow
+        self.draw_icon(x_pos + 5, 9, 1, self.button_text_color);
     }
 
     pub fn deinit(self: *Window) void {
@@ -96,7 +114,7 @@ pub const Window = struct {
     }
 
     pub fn redraw(self: *Window) void {
-        self.draw_rect_f_inner(self.border_size + 1, 27, self.width - self.border_size - 1, self.height - 27, self.bg_col); // Inner fill
+        self.draw_rect_f_inner(self.border_size + 1, 27, self.width - self.border_size - 2, self.height - 27, self.bg_col); // Inner fill
         self.draw_rect_f_inner(self.border_size, 26, 1, self.height - self.border_size - 26, self.dark_edge_color); // Inner shadow left
         self.draw_rect_f_inner(self.border_size, 26, self.width - self.border_size, 1, self.dark_edge_color); // Inner shadow top
 
@@ -104,16 +122,23 @@ pub const Window = struct {
 
         self.draw_rect_f_inner(0, 0, self.border_size, self.height, self.border_col); // left border
         self.draw_rect_f_inner(0, self.height - self.border_size, self.width, self.border_size, self.border_col); // bottom border
-        self.draw_rect_f_inner(self.width - self.border_size, 0, self.border_size, self.height, self.border_col); // right border
+        self.draw_rect_f_inner(self.width - self.border_size - 1, 0, self.border_size, self.height, self.border_col); // right border
         self.draw_rect_f_inner(0, 0, self.width, self.border_size, self.border_col); // top border
 
         self.draw_rect_f_inner(0, 0, 1, self.height, self.light_edge_color); // left border chamfer
         self.draw_rect_f_inner(0, 0, self.width, 1, self.light_edge_color); // top border chamfer
+        self.draw_rect_f_inner(self.width - 1, 0, 1, self.height, self.dark_edge_color); // right border chamfer
+        self.draw_rect_f_inner(0, self.height - 1, self.width, 1, self.dark_edge_color); // bottom border chamfer
         self.draw_rect_f_inner(self.border_size, self.height - self.border_size, self.width - self.border_size * 2, 1, self.light_edge_color); // bottom border inner chamfer
-        self.draw_rect_f_inner(self.width - self.border_size, 26, 1, self.height - 25 - self.border_size, self.light_edge_color); // left border inner chamfer
+        self.draw_rect_f_inner(self.width - self.border_size - 1, 30, 1, self.height - 29 - self.border_size, self.light_edge_color); // right border inner chamfer
 
-        self.draw_rect_f_inner(self.border_size, 3, self.width - self.border_size * 2, 20, self.dark_edge_color); // inner titlebar shadow
-        self.draw_rect_f_inner(self.border_size + 1, 4, self.width - self.border_size * 2 - 2, 18, self.titlebar_inner_col); // inner titlebar
+        self.draw_rect_f_inner(self.border_size, 4, self.width - self.border_size * 2, 2, self.dark_edge_color); // inner titlebar shadow top
+        self.draw_rect_f_inner(self.border_size, 19, self.width - self.border_size * 2, 1, self.light_edge_color); // inner titlebar light edge bottom
+        self.draw_rect_f_inner(self.border_size, 4, 1, 18, self.dark_edge_color); // inner titlebar shadow left
+        self.draw_rect_f_inner(self.width - self.border_size - 1, 3, 1, 16, self.light_edge_color); // inner titlebar light edge right
+        self.draw_rect_f_inner(self.border_size + 1, 5, self.width - self.border_size * 2 - 2, 17, self.titlebar_inner_col); // inner titlebar
+
+        self.draw_close_button();
 
         self.draw_title(); // title
 
@@ -152,7 +177,7 @@ pub const Window = struct {
                 for (0..owos.c.OwOSFont_8x16.width) |char_x| {
                     const pixel_on = (bitmap[char_y] & (@as(usize, @intCast(0x80)) >> @as(u6, @intCast(char_x)))) != 0;
                     if (pixel_on) {
-                        self.put_pixel(self.border_size + (self.width / 2) - (@as(u32, @intCast(self.name.len)) * 8 / 2) + @as(u32, @intCast(char_x + char_offset)), 6 + @as(u32, @intCast(char_y)), self.title_col);
+                        self.put_pixel(self.border_size + (self.width / 2) - (@as(u32, @intCast(self.name.len)) * 8 / 2) + @as(u32, @intCast(char_x + char_offset)), 5 + @as(u32, @intCast(char_y)), self.title_col);
                     }
                 }
             }
@@ -194,11 +219,22 @@ pub const Window = struct {
                 for (0..font.width) |char_x| {
                     const pixel_on = (bitmap[char_y] & (@as(usize, @intCast(0x80)) >> @as(u6, @intCast(char_x)))) != 0;
                     if (pixel_on) {
-                        self.put_pixel(self.border_size + 1 + x + @as(u32, @intCast(char_x + char_offset)), 11 + y + @as(u32, @intCast(char_y)), color);
+                        self.put_pixel(self.border_size + 1 + x + @as(u32, @intCast(char_x + char_offset)), 27 + y + @as(u32, @intCast(char_y)), color);
                     }
                 }
             }
             char_offset += font.width;
+        }
+    }
+    fn draw_icon(self: *Window, x: u32, y: u32, idx: u8, color: u32) void {
+        const bitmap = owos.c.get_bitmap(idx, &owos.c.IconFont);
+        for (0..owos.c.IconFont.height) |char_y| {
+            for (0..owos.c.IconFont.width) |char_x| {
+                const pixel_on = (bitmap[char_y] & (@as(usize, @intCast(0x80)) >> @as(u6, @intCast(char_x)))) != 0;
+                if (pixel_on) {
+                    self.put_pixel(x + @as(u32, @intCast(char_x)), y + @as(u32, @intCast(char_y)), color);
+                }
+            }
         }
     }
     fn draw_char_inner(self: *Window, x: u32, y: u32, text: u8, color: u32, font: *owos.c.Font) void {
@@ -207,7 +243,7 @@ pub const Window = struct {
             for (0..font.width) |char_x| {
                 const pixel_on = (bitmap[char_y] & (@as(usize, @intCast(0x80)) >> @as(u6, @intCast(char_x)))) != 0;
                 if (pixel_on) {
-                    self.put_pixel(self.border_size + 1 + x + @as(u32, @intCast(char_x)), 11 + y + @as(u32, @intCast(char_y)), color);
+                    self.put_pixel(self.border_size + 1 + x + @as(u32, @intCast(char_x)), 27 + y + @as(u32, @intCast(char_y)), color);
                 }
             }
         }
