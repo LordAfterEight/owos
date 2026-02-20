@@ -14,6 +14,7 @@ pub const c = @cImport({
     @cInclude("drivers/ps2.h");
     @cInclude("ui/wallpaper.h");
     @cInclude("sound/pcspeaker.h");
+    @cInclude("fonts/get_bitmap.h");
     @cInclude("fonts/OwOSFont_8x16.h");
 });
 
@@ -30,3 +31,4 @@ pub const ui = struct{
 };
 pub const std = @import("std/std.zig");
 pub const fs = @import("ramfs/ramfs.zig");
+pub const allocator = @import("allocator/allocator.zig");

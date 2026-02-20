@@ -7,7 +7,7 @@ pub var global_scheduler: CooperativeScheduler = .{
 };
 
 const MAX_PROCESSES: usize = 16;
-const MAX_ROUNDS_PER_TICK: usize = 10;
+const MAX_ROUNDS_PER_TICK: usize = 100;
 
 const Result = struct {
     exit_code: u8,
@@ -81,6 +81,7 @@ pub const CooperativeScheduler = struct {
         var exit_code: u8 = 2;
         while (exit_code == 2) {
             var rounds: u8 = 0;
+            asm volatile ("hlt;");
             repeat: while (rounds < MAX_ROUNDS_PER_TICK) {
                 var did_work = false;
                 for (0..MAX_PROCESSES) |slot| {
@@ -92,7 +93,6 @@ pub const CooperativeScheduler = struct {
                                 continue;
                             };
                             if (proc_result == 0 or proc_result == 1) {
-                                // ... kill process
                                 exit_code = proc_result;
                                 break :repeat;
                             }
@@ -103,7 +103,6 @@ pub const CooperativeScheduler = struct {
                 if (!did_work) break :repeat;
                 rounds += 1;
             }
-            asm volatile ("hlt;");
         }
         while (true) asm volatile ("cli; hlt");
     }

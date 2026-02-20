@@ -50,9 +50,6 @@ void draw_text(uint32_t x, uint32_t y, const char* text, uint32_t color, bool in
 }
 
 int draw_text_wrapping(uint32_t x, uint32_t y, const char* text, uint32_t color, bool inverse, const struct Font* font) {
-    uintptr_t rsp;
-    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
-    draw_rsp_mod16 = rsp & 0xF;
     int x_offset = 0;
     int y_offset = 0;
     for (size_t i = 0; text[i] != '\0'; i++) {
