@@ -62,6 +62,7 @@ export fn kmain() callconv(.c) noreturn {
 
     scheduler.add_process(owos.ui.owm.WindowManager, "OwOS Window Manager") catch unreachable;
     scheduler.add_process(owos.ui.taskbar.TaskBar, "Taskbar") catch unreachable;
+    scheduler.add_process(owos.shell.Shell, "Shelly") catch unreachable;
 
     scheduler.run();
 }
