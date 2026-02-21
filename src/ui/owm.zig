@@ -37,20 +37,9 @@ pub const WindowManager = struct {
     }
 
     pub fn tick(self: *WindowManager) anyerror!u8 {
-        var desktop_dirty = false;
-        for (self.windows) |maybe_window| {
-            if (maybe_window) |win| {
-                if (win.dirty) {
-                    win.redraw();
-                    win.dirty = false;
-                    desktop_dirty = true;
-                }
-            }
-        }
-
-        if (desktop_dirty and owos.c.ticks - self.last_tick >= 16) {
+        if (owos.c.ticks - self.last_tick >= 16) {
             self.last_tick = owos.c.ticks;
-            //_ = owos.c.owos_memcpy(@volatileCast(@ptrCast(&owos.c.back_buffer.*)), @ptrCast(&owos.c.wallpaper.*), 1920*1040*4);
+            _ = owos.c.owos_memcpy(@volatileCast(@ptrCast(&owos.c.back_buffer.*)), @ptrCast(&owos.c.wallpaper.*), 1920*1043*4);
 
             for (self.windows) |maybe_window| {
                 if (maybe_window) |win| {
@@ -62,7 +51,6 @@ pub const WindowManager = struct {
                     const win_x: i32 = @intCast(win.pos_x);
                     const win_y: i32 = @intCast(win.pos_y);
                     const win_w: i32 = @intCast(win.width);
-                    //const win_h: i32 = @intCast(win.height);
                     const screen_w: i32 = @intCast(owos.c.SCREEN_WIDTH);
                     const screen_h: i32 = @intCast(owos.c.SCREEN_HEIGHT);
 

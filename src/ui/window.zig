@@ -110,10 +110,11 @@ pub const Window = struct {
     }
 
     pub fn once(self: *Window) void {
+        self.redraw_frame();
         self.redraw();
     }
 
-    pub fn redraw(self: *Window) void {
+    pub fn redraw_frame(self: *Window) void {
         self.draw_rect_f_inner(self.border_size + 1, 27, self.width - self.border_size - 2, self.height - 27, self.bg_col); // Inner fill
         self.draw_rect_f_inner(self.border_size, 26, 1, self.height - self.border_size - 26, self.dark_edge_color); // Inner shadow left
         self.draw_rect_f_inner(self.border_size, 26, self.width - self.border_size, 1, self.dark_edge_color); // Inner shadow top
@@ -141,7 +142,9 @@ pub const Window = struct {
         self.draw_close_button();
 
         self.draw_title(); // title
+    }
 
+    pub fn redraw(self: *Window) void {
         for (0..self.draw_queue_counter) |i| {
             if (self.draw_queue[i]) |call| {
                 switch (call.type) {

@@ -85,48 +85,37 @@ uint8_t ps2_read_data(void) {
 void ps2_mouse_init(void) {
     uint8_t status;
 
-    // 1. Disable Ports
-    ps2_write_command(0xAD); // Disable Keyboard
-    ps2_write_command(0xA7); // Disable Mouse
+    ps2_write_command(0xAD);
+    ps2_write_command(0xA7);
 
-    // 2. Flush Output Buffer
     while (inb(PS2_STATUS_PORT) & 0x01) {
         inb(PS2_DATA_PORT);
     }
 
-    // 3. Set Controller Configuration Byte (CCB)
-    ps2_write_command(0x20); // Read CCB
+    ps2_write_command(0x20);
     status = ps2_read_data();
 
-    // Enable Bit 0 (First Port Interrupt) - Optional for polling, but good for keyboard
-    // Enable Bit 1 (Second Port Interrupt) - Optional, we are polling
-    // Clear Bit 5 (Disable Mouse) - CRITICAL: Must be 0 to enable mouse
-    status |= 0x01;       // Enable Keyboard IRQ (if you use it later)
-    status &= ~0x20;      // Enable Mouse Clock (Clear "Disable Mouse" bit)
-    status &= ~0x10;      // Enable Keyboard Clock
+    status |= 0x01;
+    status &= ~0x20;
+    status &= ~0x10;
 
-    ps2_write_command(0x60); // Write CCB
+    ps2_write_command(0x60);
     ps2_write_data(status);
 
-    // 4. Enable Mouse Port
     ps2_write_command(0xA8);
 
-    // 5. Reset Mouse
-    ps2_write_command(0xD4); // Write to Mouse
-    ps2_write_data(0xFF);    // Reset command
+    ps2_write_command(0xD4);
+    ps2_write_data(0xFF);
 
-    // Wait for completion (0xFA ACK, then 0xAA Self-test pass, then 0x00 Mouse ID)
-    uint8_t resp = ps2_read_data(); // 0xFA (ACK)
-    resp = ps2_read_data();         // 0xAA (Success)
-    resp = ps2_read_data();         // 0x00 (Mouse ID)
+    uint8_t resp = ps2_read_data();
+    resp = ps2_read_data();
+    resp = ps2_read_data();
 
-    // 6. Enable Data Reporting (The step that actually makes it move)
     ps2_write_command(0xD4);
     ps2_write_data(0xF4);
 
-    resp = ps2_read_data(); // Should be 0xFA (ACK)
+    resp = ps2_read_data();
 
-    // 7. Re-enable Keyboard
     ps2_write_command(0xAE);
 }
 

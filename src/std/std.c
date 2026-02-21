@@ -22,6 +22,7 @@ void panic(const char message[]) {
     char buf[32];
     format(buf, "Reason: %s", message);
     draw_text((SCREEN_WIDTH - strlen(buf) * 8) / 2, SCREEN_HEIGHT / 3 + 16, buf, 0xFFFFFF, false, &OwOSFont_8x16);
+    swap_buffers();
     for (int i = 10; i > 0; i--) {
         if (panic_count < 3) {
             format(buf, "Trying to recover in: %ds", i);
@@ -29,6 +30,7 @@ void panic(const char message[]) {
             format(buf, "Stopping in: %ds", i);
         }
         draw_text((SCREEN_WIDTH - strlen(buf) * 8) / 2, SCREEN_HEIGHT / 3 + 64, buf, 0xFFFFFF, false, &OwOSFont_8x16);
+        swap_buffers();
         msleep(1000);
         draw_text((SCREEN_WIDTH - strlen(buf) * 8) / 2, SCREEN_HEIGHT / 3 + 64, buf, 0x550000, false, &OwOSFont_8x16);
     }

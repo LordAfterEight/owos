@@ -58,36 +58,10 @@ export fn kmain() callconv(.c) noreturn {
     asm volatile ("sti");
     owos.serial.println("L: Interrupts enabled");
 
-    owos.c.draw_text(0, 0, "Reserving 1GiB of RAM...", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
-    owos.c.draw_text(0, 16, "Done", 0xFFFFFF, false, &owos.c.OwOSFont_8x16);
-
     scheduler = owos.scheduler.CooperativeScheduler.init();
 
-    var owm = owos.process.Process.init(
-        owos.ui.owm.WindowManager,
-        owos.allocator.global_alloc,
-        .{ "OwOS Window Manager" }
-    ) catch unreachable;
-
-    var shell = owos.process.Process.init(
-        owos.shell.Shell,
-        owos.allocator.global_alloc,
-        .{ "Shelly" }
-    ) catch unreachable;
-
-    var taskbar = owos.process.Process.init(
-        owos.ui.taskbar.TaskBar,
-        owos.allocator.global_alloc,
-        .{ "Taskbar" }
-    ) catch unreachable;
-
-    for (0..owos.c.SCREEN_HEIGHT*owos.c.SCREEN_WIDTH) |i| {
-        owos.c.back_buffer[i] = 0x008080;
-    }
-    _ = owos.c.owos_memcpy(@ptrCast(@volatileCast(&owos.c.back_buffer.*)), @ptrCast(&owos.c.wallpaper.*), 1920*1080*4);
-    scheduler.add_process(&owm);
-    scheduler.add_process(&taskbar);
-    scheduler.add_process(&shell);
+    scheduler.add_process(owos.ui.owm.WindowManager, "OwOS Window Manager") catch unreachable;
+    scheduler.add_process(owos.ui.taskbar.TaskBar, "Taskbar") catch unreachable;
 
     scheduler.run();
 }

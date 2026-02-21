@@ -1,5 +1,5 @@
 #include "pic.h"
-#include "std/std.h" // inb/outb
+#include "std/std.h"
 
 static inline void io_wait(void) {
     outb(0x80, 0);

@@ -99,7 +99,7 @@ pub const TaskBar = struct {
     }
 
     pub fn tick(self: *TaskBar) u8 {
-        if (self.last_render_tick - owos.c.ticks >= 16) {
+        if (self.last_render_tick - owos.c.ticks >= 128) {
             owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 37, owos.c.SCREEN_WIDTH, 37, self.titlebar_inner_col);
             owos.c.draw_rect_f(0, owos.c.SCREEN_HEIGHT - 37, owos.c.SCREEN_WIDTH, 1, self.light_edge_color);
             owos.c.draw_text(5, owos.c.SCREEN_HEIGHT - 26, owos.c.KERNEL_NAME, self.fg_col, false, &owos.c.OwOSFont_8x16);
