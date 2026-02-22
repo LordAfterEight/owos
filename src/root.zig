@@ -12,7 +12,6 @@ pub const c = @cImport({
     @cInclude("pic.h");
     @cInclude("limine.h");
     @cInclude("drivers/ps2.h");
-    @cInclude("ui/wallpaper.h");
     @cInclude("sound/pcspeaker.h");
     @cInclude("fonts/get_bitmap.h");
     @cInclude("fonts/OwOSFont_8x16.h");

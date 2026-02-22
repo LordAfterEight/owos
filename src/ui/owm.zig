@@ -39,7 +39,6 @@ pub const WindowManager = struct {
     pub fn tick(self: *WindowManager) anyerror!u8 {
         if (owos.c.ticks - self.last_tick >= 16) {
             self.last_tick = owos.c.ticks;
-            _ = owos.c.owos_memcpy(@volatileCast(@ptrCast(&owos.c.back_buffer.*)), @ptrCast(&owos.c.wallpaper.*), 1920*1043*4);
 
             for (self.windows) |maybe_window| {
                 if (maybe_window) |win| {
