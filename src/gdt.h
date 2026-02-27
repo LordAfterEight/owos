@@ -41,14 +41,13 @@ SEG_PRIV(3)     | SEG_CODE_EXRD
 SEG_LONG(0)     | SEG_SIZE(1) | SEG_GRAN(1) | \
 SEG_PRIV(3)     | SEG_DATA_RDWR
 
-// TSS structure for x86_64
 struct __attribute__((packed)) TSS64 {
     uint32_t reserved0;
     uint64_t rsp0;
     uint64_t rsp1;
     uint64_t rsp2;
     uint64_t reserved1;
-    uint64_t ist1;  // Double-fault stack
+    uint64_t ist1;
     uint64_t ist2;
     uint64_t ist3;
     uint64_t ist4;
@@ -66,3 +65,4 @@ static uint8_t double_fault_stack[4096 * 4] __attribute__((aligned(16)));
 
 void create_descriptor(uint32_t base, uint32_t limit, uint16_t flag);
 void gdt_init(void);
+void tss_set_rsp0(uint64_t rsp0);

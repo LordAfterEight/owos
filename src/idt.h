@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+typedef void (*isr_stub_t)(void);
+
 struct IDTEntry {
     uint16_t offset_low;
     uint16_t selector;
@@ -25,7 +27,7 @@ struct InterruptFrame {
     uint64_t flags;
     uint64_t sp;
     uint64_t ss;
-};
+} __attribute__((packed));
 
 typedef void (*interrupt_handler_t)(struct InterruptFrame *, uint64_t error_code);
 
@@ -36,6 +38,7 @@ __attribute__((aligned(32)))
 extern struct IDTPointer idt_ptr;
 
 void set_idt_entry(int vector, interrupt_handler_t handler, uint8_t ist, uint8_t type_attr);
+void set_idt_entry_stub(int vector, isr_stub_t handler, uint8_t ist, uint8_t type_attr);
 bool check_idt_entry(int vector, interrupt_handler_t handler, uint8_t ist, uint8_t type_attr);
 void idt_init(void);
 extern void timer_handler_asm();
@@ -50,7 +53,13 @@ __attribute__((interrupt))
 void page_fault_handler(struct InterruptFrame* frame, uint64_t error_code);
 
 __attribute__((interrupt))
+void general_protection_handler(struct InterruptFrame* frame, uint64_t error_code);
+
+__attribute__((interrupt))
 void double_fault_handler(struct InterruptFrame* frame, uint64_t error_code);
+
+__attribute__((interrupt))
+void invalid_opcode_handler(struct InterruptFrame* frame, uint64_t error_code);
 
 __attribute__((noreturn))
 void panic_handler_c(struct InterruptFrame* frame);

@@ -3,16 +3,15 @@
 #include "timer.h"
 #include "sound/pcspeaker.h"
 #include <stdarg.h>
+#include <stddef.h>
 #include "string.h"
-
-volatile uint8_t panic_count = 0;
+#include "idt.h"
 
 void format(char* buf, const char* fmt, ...);
 void msleep(uint64_t);
 
-void panic(const char message[]) {
+void panic(const char message[], struct InterruptFrame* frame) {
     //beep(500, 25);
-    panic_count++;
     for (uint32_t y = 0; y < SCREEN_HEIGHT-1; y++) {
         for (uint32_t x = 0; x < SCREEN_WIDTH-1; x++) {
             blit_pixel(x, y, 0x550000);
@@ -22,23 +21,14 @@ void panic(const char message[]) {
     char buf[32];
     format(buf, "Reason: %s", message);
     draw_text((SCREEN_WIDTH - strlen(buf) * 8) / 2, SCREEN_HEIGHT / 3 + 16, buf, 0xFFFFFF, false, &OwOSFont_8x16);
+    format(buf, "Instruction Pointer: 0x%x", frame->ip);
+    draw_text(1, 1, buf, 0xFFFFFF, false, &OwOSFont_8x16);
+    format(buf, "Stack Pointer: 0x%x", frame->sp);
+    draw_text(1, 17, buf, 0xFFFFFF, false, &OwOSFont_8x16);
+    format(buf, "CS: %x", frame->cs);
+    draw_text(1, 33, buf, 0xFFFFFF, false, &OwOSFont_8x16);
     swap_buffers();
-    for (int i = 10; i > 0; i--) {
-        if (panic_count < 3) {
-            format(buf, "Trying to recover in: %ds", i);
-        } else {
-            format(buf, "Stopping in: %ds", i);
-        }
-        draw_text((SCREEN_WIDTH - strlen(buf) * 8) / 2, SCREEN_HEIGHT / 3 + 64, buf, 0xFFFFFF, false, &OwOSFont_8x16);
-        swap_buffers();
-        msleep(1000);
-        draw_text((SCREEN_WIDTH - strlen(buf) * 8) / 2, SCREEN_HEIGHT / 3 + 64, buf, 0x550000, false, &OwOSFont_8x16);
-    }
-    for (int y = 0; y < SCREEN_HEIGHT; y++) {
-        for (int x = 0; x < SCREEN_WIDTH; x++) {
-            blit_pixel(x, y, 0x000000);
-        }
-    }
+    asm volatile ("hlt");
 }
 
 uint8_t inb(uint16_t port) {

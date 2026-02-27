@@ -1,4 +1,5 @@
 const owos = @import("../root.zig");
+const std = @import("std");
 
 pub var owm_global: ?*WindowManager = null;
 

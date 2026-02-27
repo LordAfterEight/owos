@@ -1,88 +1,122 @@
 const std = @import("std");
 const owos = @import("../root.zig");
 
-pub var global_scheduler: CooperativeScheduler = .{
-    .processes = [_]?*owos.process.Process{null} ** MAX_PROCESSES,
-    .process_counter = 0,
-};
-
 const MAX_PROCESSES: usize = 16;
 
-const Result = struct { exit_code: u8, pid: usize };
+extern fn enter_user(ctx: *const owos.process.CpuContext) noreturn;
 
-pub const CooperativeScheduler = struct {
-    processes: [MAX_PROCESSES]?*owos.process.Process,
-    process_counter: u8,
+extern fn tss_set_rsp0(rsp0: u64) void;
 
-    pub fn init() *CooperativeScheduler {
-        owos.serial.println("Initialized cooperative scheduler");
+pub const Scheduler = struct {
+    processes: [MAX_PROCESSES]?*owos.process.Process = [_]?*owos.process.Process{null} ** MAX_PROCESSES,
+    next_pid: usize = 0,
+    current: ?usize = null,
 
+    pub fn init() *Scheduler {
+        owos.serial.println("Initialized userland scheduler");
         return &global_scheduler;
     }
 
-    pub fn add_process(self: *CooperativeScheduler, prog: type, name: [:0]const u8) anyerror!void {
-        const proc_ptr = try owos.allocator.global_alloc.create(owos.process.Process);
-        proc_ptr.* = try owos.process.Process.init(prog, owos.allocator.global_alloc, .{name});
+    pub fn spawn_user_process(self: *Scheduler, name: [:0]const u8, code: []const u8) !usize {
+        owos.serial.println("Creating Process to spawn...");
+        const p = try owos.process.Process.create_user_process(owos.allocator.global_alloc, name, code);
 
+        owos.serial.println("Searching for free slot");
         for (0..MAX_PROCESSES) |slot| {
-            owos.serial.print("Checking slot: ");
-            owos.serial.print_dec_usize(slot);
-            owos.serial.print("... ");
-            if (self.processes[slot] != null) {
-                owos.serial.print("Occupied by process: ");
-                owos.serial.println(self.processes[slot].?.name);
-            } else {
-                owos.serial.println("Free");
-                proc_ptr.id = slot;
-                self.processes[slot] = proc_ptr;
-                self.process_counter += 1;
-                owos.serial.print("Added process \"");
-                owos.serial.print(proc_ptr.name);
-                owos.serial.print("\" with PID:");
-                owos.serial.print_dec_usize(proc_ptr.id);
-                owos.serial.println(" to cooperative scheduler");
-                return;
+            if (self.processes[slot] == null) {
+                p.pid = slot;
+                self.processes[slot] = p;
+                owos.serial.print("Spawned user process ");
+                owos.serial.print(name);
+                owos.serial.print(" pid=");
+                owos.serial.print_dec_usize(slot);
+                owos.serial.println("");
+                return slot;
             }
         }
-        owos.allocator.global_alloc.destroy(proc_ptr);
+
+        p.destroy();
         return error.NoFreeSlot;
     }
 
-    pub fn kill_process(self: *CooperativeScheduler, pid: usize) void {
-        if (self.processes[pid] != null) {
-            self.processes[pid] = null;
-        } else {}
-    }
-
-    pub fn scheduler_run(self: *CooperativeScheduler) noreturn {
-        owos.serial.println("Started cooperative scheduler");
-        var exit_code: u8 = 2;
-        var last_tick: u64 = owos.c.ticks;
-
-        while (exit_code == 2) {
-            for (0..MAX_PROCESSES) |slot| {
-                if (self.processes[slot]) |proc| {
-                    if (proc.running) {
-                        const proc_result = proc.tick() catch |err| {
-                            owos.serial.print("Error ocurred: ");
-                            owos.serial.println(@errorName(err));
-                            continue;
-                        };
-                        if (proc_result == 0 or proc_result == 1) {
-                            exit_code = proc_result;
-                        }
-                    }
+    pub fn reap_zombies(self: *Scheduler) void {
+        for (0..MAX_PROCESSES) |i| {
+            if (self.processes[i]) |p| {
+                if (p.state == .zombie) {
+                    owos.serial.print("Reaping pid=");
+                    owos.serial.print_dec_usize(p.pid);
+                    owos.serial.println("");
+                    p.destroy();
+                    self.processes[i] = null;
                 }
             }
-            while (owos.c.ticks == last_tick) {
-                asm volatile ("hlt" ::: .{ .memory = true });
-            }
-            last_tick = owos.c.ticks;
         }
-        while (true) asm volatile ("cli; hlt");
     }
 
-    pub fn run(self: *CooperativeScheduler) noreturn {
-        scheduler_run(self);
+    fn pick_next(self: *Scheduler) ?*owos.process.Process {
+        const start: usize = if (self.current) |c| (c + 1) % MAX_PROCESSES else 0;
+
+        var i: usize = 0;
+        while (i < MAX_PROCESSES) : (i += 1) {
+            const idx = (start + i) % MAX_PROCESSES;
+            if (self.processes[idx]) |p| {
+                if (p.state == .ready) {
+                    self.current = idx;
+                    return p;
+                }
+            }
+        }
+        return null;
+    }
+
+    pub fn run(self: *Scheduler) noreturn {
+        owos.serial.println("Started userland scheduler");
+
+        while (true) {
+            self.reap_zombies();
+
+            const next = self.pick_next() orelse {
+                asm volatile ("hlt");
+                continue;
+            };
+
+            next.state = .running;
+
+            owos.serial.println("about to enter user");
+            owos.serial.print("user rip=");
+            owos.serial.print_hex_u64(next.user_ctx.rip);
+            owos.serial.println("");
+            owos.serial.print("user rsp=");
+            owos.serial.print_hex_u64(next.user_ctx.rsp);
+            owos.serial.println("");
+            owos.serial.print("user cs=");
+            owos.serial.print_hex_u64(next.user_ctx.cs);
+            owos.serial.println("");
+            owos.serial.print("user ss=");
+            owos.serial.print_hex_u64(next.user_ctx.ss);
+            owos.serial.println("");
+            owos.serial.println("tss_set_rsp0 next");
+            tss_set_rsp0(@intFromPtr(next.kernel_stack.ptr) + next.kernel_stack.len);
+            owos.serial.println("calling enter_user");
+            enter_user(&next.user_ctx);
+        }
+    }
+
+    pub fn on_yield(self: *Scheduler) void {
+        if (self.current) |idx| {
+            if (self.processes[idx]) |p| {
+                if (p.state == .running) p.state = .ready;
+            }
+        }
+    }
+
+    pub fn on_exit(self: *Scheduler, code: u8) void {
+        if (self.current) |idx| {
+            if (self.processes[idx]) |p| {
+                p.markZombie(code);
+            }
+        }
     }
 };
+
+pub var global_scheduler: Scheduler = .{};

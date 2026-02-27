@@ -72,6 +72,8 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addAssemblyFile(b.path("src/timer_asm.s"));
     exe.root_module.addAssemblyFile(b.path("src/start.s"));
     exe.root_module.addAssemblyFile(b.path("src/enable_sse.s"));
+    exe.root_module.addAssemblyFile(b.path("src/syscall_80.s"));
+    exe.root_module.addAssemblyFile(b.path("src/enter_user.s"));
 
     const manual_opt = b.option([]const u8, "build_date", "Build date string (e.g. \"Feb 11 2026\")");
 
@@ -102,4 +104,23 @@ pub fn build(b: *std.Build) void {
     exe.setLinkerScript(b.path("linker.lds"));
     exe.link_gc_sections = false;
     b.installArtifact(exe);
+
+    const iso_cmd = b.addSystemCommand(&.{
+        "./make_iso.sh"
+    });
+
+    const qemu_cmd = b.addSystemCommand(&.{
+        "qemu-system-x86_64",
+        "-cdrom", "owos.iso",
+        "-serial", "stdio",
+        "-no-reboot",
+        "-m", "2G",
+        "-device", "virtio-vga",
+        "-enable-kvm",
+    });
+    const run_step = b.step("run", "Launches OwOS in QEMU");
+    iso_cmd.step.dependOn(b.getInstallStep());
+    qemu_cmd.step.dependOn(b.getInstallStep());
+    run_step.dependOn(&iso_cmd.step);
+    run_step.dependOn(&qemu_cmd.step);
 }

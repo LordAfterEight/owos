@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "mem.h"
+#include "std.h"
 
 void *owos_memcpy(void *restrict dest, const void *restrict src, size_t n) {
     uint8_t *restrict pdest = (uint8_t *restrict)dest;

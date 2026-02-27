@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "idt.h"
 
 static char* KERNEL_VERSION = "0.4.0";
 static char* KERNEL_NAME = "OwOS";
@@ -11,7 +12,7 @@ static char* OS_MODEL = "Volatile";
 
 extern volatile uint8_t panic_count;
 
-void panic(const char message[]);
+void panic(const char message[], struct InterruptFrame* frame);
 uint8_t inb(uint16_t port);
 void outb(uint16_t port, uint8_t val);
 void outw(uint16_t port, uint16_t val);

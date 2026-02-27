@@ -72,3 +72,7 @@ void gdt_init(void) {
         : "rax", "memory"
     );
 }
+
+void tss_set_rsp0(uint64_t rsp0) {
+    tss.rsp0 = rsp0;
+}
