@@ -1,126 +1,94 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
+    const optimize = b.standardOptimizeOption(.{});
+
+    const Target = std.Target.x86;
     const target = b.resolveTargetQuery(.{
         .cpu_arch = .x86_64,
-        .cpu_model = .{ .explicit = &std.Target.x86.cpu.x86_64 },
         .os_tag = .freestanding,
         .abi = .none,
+        .cpu_features_sub = Target.featureSet(&.{ .avx, .avx2, .mmx }),
     });
 
-    const owos_c_module = b.createModule(.{
+    const limine_module = b.createModule(.{
+        .root_source_file = b.path("src/limine.zig"),
+        .target = target,
+        .optimize = optimize,
+        .code_model = .kernel,
+    });
+
+    const root_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .code_model = .kernel,
+    });
+
+    const owos_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
-        .link_libc = false,
-        .strip = false,
-        .sanitize_c = .off,
-        .optimize = .ReleaseSmall,
+        .target = target,
+        .optimize = optimize,
+        .code_model = .kernel,
     });
 
-    owos_c_module.addIncludePath(b.path("src"));
+    root_module.addImport("limine", limine_module);
+    root_module.addImport("owos", owos_module);
 
-    const exe = b.addExecutable(.{
-        .name = "owos",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = .ReleaseSmall,
-            .strip = false,
-            .omit_frame_pointer = false,
-            .single_threaded = true,
-            .unwind_tables = .none,
-            .link_libc = false,
-            .red_zone = false,
-            .code_model = .kernel,
-        }),
+    const kernel = b.addExecutable(.{
+        .name = "kernel.elf",
+        .root_module = root_module,
     });
+    kernel.setLinkerScript(b.path("src/linker.ld"));
+    kernel.use_lld = true;
+    kernel.use_llvm = true;
 
-    exe.root_module.addImport("owos", owos_c_module);
-    exe.entry = .{ .symbol_name = "_start" };
-    exe.addIncludePath(b.path("src"));
+    // Assemble the ISO root directory using system limine files
+    const limine_share = "/usr/share/limine";
+    const iso_files = b.addWriteFiles();
+    _ = iso_files.addCopyFile(kernel.getEmittedBin(), "boot/kernel.elf");
+    _ = iso_files.addCopyFile(b.path("limine.conf"), "boot/limine/limine.conf");
+    _ = iso_files.addCopyFile(.{ .cwd_relative = limine_share ++ "/limine-bios.sys" }, "boot/limine/limine-bios.sys");
+    _ = iso_files.addCopyFile(.{ .cwd_relative = limine_share ++ "/limine-bios-cd.bin" }, "boot/limine/limine-bios-cd.bin");
+    _ = iso_files.addCopyFile(.{ .cwd_relative = limine_share ++ "/limine-uefi-cd.bin" }, "boot/limine/limine-uefi-cd.bin");
+    _ = iso_files.addCopyFile(.{ .cwd_relative = limine_share ++ "/BOOTX64.EFI" }, "EFI/BOOT/BOOTX64.EFI");
+    _ = iso_files.addCopyFile(.{ .cwd_relative = limine_share ++ "/BOOTIA32.EFI" }, "EFI/BOOT/BOOTIA32.EFI");
 
-    exe.addCSourceFiles(.{
-        .files = &.{
-            "src/rendering.c",
-            "src/std/mem.c",
-            "src/std/std.c",
-            "src/std/string.c",
-            "src/time.c",
-            "src/timer.c",
-            "src/gdt.c",
-            "src/idt.c",
-            "src/pic.c",
-            "src/sound/pcspeaker.c",
-            "src/drivers/ps2.c",
-            "src/fonts/get_bitmap.c",
-            "src/fonts/OwOSFont_8x16.c",
-            "src/fonts/icons.c",
-            "src/limine_requests.c",
-        },
-        .flags = &.{
-            "-g", "-O2", "-pipe", "-Wall", "-Wextra",
-            "-Wno-unused-variable", "-Wno-date-time",
-            "-std=gnu11", "-ffreestanding",
-            "-fno-stack-protector", "-fno-stack-check",
-            "-fno-lto", "-fno-PIC",
-            "-ffunction-sections", "-fdata-sections",
-            "-m64", "-march=x86-64", "-mabi=sysv",
-            "-mno-80387", "-mno-mmx", "-mno-sse", "-mno-sse2",
-            "-mno-red-zone", "-mcmodel=kernel",
-        },
+    // Build the ISO with xorriso
+    const xorriso = b.addSystemCommand(&.{
+        "xorriso", "-as", "mkisofs",
+        "-b",              "boot/limine/limine-bios-cd.bin",
+        "-no-emul-boot",
+        "-boot-load-size", "4",
+        "-boot-info-table",
+        "--efi-boot",      "boot/limine/limine-uefi-cd.bin",
+        "-efi-boot-part",
+        "--efi-boot-image",
+        "--protective-msdos-label",
+        "-o",
     });
+    const iso_file = xorriso.addOutputFileArg("kernel.iso");
+    xorriso.addDirectoryArg(iso_files.getDirectory());
 
-    exe.root_module.addAssemblyFile(b.path("src/timer_asm.s"));
-    exe.root_module.addAssemblyFile(b.path("src/start.s"));
-    exe.root_module.addAssemblyFile(b.path("src/enable_sse.s"));
-    exe.root_module.addAssemblyFile(b.path("src/syscall_80.s"));
-    exe.root_module.addAssemblyFile(b.path("src/enter_user.s"));
+    // Deploy Limine BIOS bootloader onto the ISO in-place
+    const limine_bios = b.addSystemCommand(&.{ "limine", "bios-install" });
+    limine_bios.addFileArg(iso_file);
 
-    const manual_opt = b.option([]const u8, "build_date", "Build date string (e.g. \"Feb 11 2026\")");
+    // Install the ISO as the default build output
+    const install_iso = b.addInstallFile(iso_file, "kernel.iso");
+    install_iso.step.dependOn(&limine_bios.step);
+    b.getInstallStep().dependOn(&install_iso.step);
 
-    const owned_date: []const u8 = if (manual_opt) |m| blk: {
-        // duplicate so the memory is owned by the build allocator
-        break :blk b.allocator.dupe(u8, m) catch @panic("OOM duplicating build_date");
-    } else blk: {
-        const res = std.process.Child.run(.{
-            .allocator = b.allocator,
-            .argv = &.{ "date", "+%b %e %Y" },
-        }) catch |err| std.debug.panic("failed to run `date`: {}", .{err}); // build() can't `try` [web:309]
-
-        defer b.allocator.free(res.stdout);
-        defer b.allocator.free(res.stderr);
-
-        const trimmed = std.mem.trimRight(u8, res.stdout, "\r\n");
-        break :blk b.allocator.dupe(u8, trimmed) catch @panic("OOM copying date stdout");
-    };
-
-    const zbuf = b.allocator.allocSentinel(u8, owned_date.len, 0) catch @panic("OOM allocSentinel(build_date)");
-    @memcpy(zbuf[0..owned_date.len], owned_date);
-    const build_date_z: [:0]const u8 = zbuf[0..owned_date.len :0];
-
-    const options = b.addOptions();
-    options.addOption([:0]const u8, "build_date", build_date_z);
-    exe.root_module.addOptions("build_options", options);
-
-    exe.setLinkerScript(b.path("linker.lds"));
-    exe.link_gc_sections = false;
-    b.installArtifact(exe);
-
-    const iso_cmd = b.addSystemCommand(&.{
-        "./make_iso.sh"
-    });
-
-    const qemu_cmd = b.addSystemCommand(&.{
+    // Run QEMU with the ISO
+    const qemu = b.addSystemCommand(&.{
         "qemu-system-x86_64",
-        "-cdrom", "owos.iso",
+        "-m",      "1G",
         "-serial", "stdio",
-        "-no-reboot",
-        "-m", "2G",
-        "-device", "virtio-vga",
-        "-enable-kvm",
+        "-cdrom",
     });
-    const run_step = b.step("run", "Launches OwOS in QEMU");
-    iso_cmd.step.dependOn(b.getInstallStep());
-    qemu_cmd.step.dependOn(b.getInstallStep());
-    run_step.dependOn(&iso_cmd.step);
-    run_step.dependOn(&qemu_cmd.step);
+    qemu.addFileArg(iso_file);
+    qemu.step.dependOn(&limine_bios.step);
+
+    const run_step = b.step("run", "Build ISO and run with QEMU");
+    run_step.dependOn(&qemu.step);
 }
