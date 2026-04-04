@@ -30,5 +30,9 @@ SECTIONS {
     .bss ALIGN(4K) : {
         *(COMMON)
         *(.bss .bss.*)
+        . = ALIGN(16);
+        __stack_bottom = .;
+        . += 16K;
+        __stack_top = .;
     }
 }
