@@ -1,6 +1,10 @@
 ENTRY(_start)
 
 SECTIONS {
+    .ramfs 0xffff900000000000 (NOLOAD) : {
+        *(.ramfs)
+    }
+
     . = 0xFFFFFFFF80200000;
 
     .text ALIGN(4K) : {

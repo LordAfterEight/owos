@@ -1,1 +1,0 @@
-zig build run

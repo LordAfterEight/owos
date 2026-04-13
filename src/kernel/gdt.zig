@@ -44,6 +44,9 @@ fn encode_entry(base: u32, limit: u20, access: u8, flags: u4) u64 {
     return entry;
 }
 
+pub var gdt_base: u64 = 0;
+pub var gdt_limit: u16 = 0;
+
 var table: [7]u64 align(16) = .{
     0, // 0x00: null
     encode_entry(0, 0xFFFFF, 0x9A, 0xA), // 0x08: kernel code (64-bit, DPL 0)
@@ -60,9 +63,14 @@ const GdtPtr = packed struct {
 };
 
 pub fn init() void {
+    owos.klog.info("GDT: initializing...", .{});
+
     tss.ist1 = @intFromPtr(&df_stack) + df_stack.len;
+    owos.klog.info("GDT: df_stack={x:0>16}  IST1={x:0>16}", .{ @intFromPtr(&df_stack), tss.ist1 });
 
     const tss_addr = @intFromPtr(&tss);
+    owos.klog.info("GDT: TSS={x:0>16}  size={d}B", .{ tss_addr, @sizeOf(TSS) });
+
     table[5] = encode_entry(
         @truncate(tss_addr),
         @as(u20, @intCast(@sizeOf(TSS) - 1)),
@@ -75,6 +83,10 @@ pub fn init() void {
         .limit = @as(u16, @sizeOf(@TypeOf(table)) - 1),
         .base = @intFromPtr(&table),
     };
+    gdt_base = ptr.base;
+    gdt_limit = ptr.limit;
+
+    owos.klog.info("GDT: base={x:0>16}  limit={d}  kcode={x:0>2}  kdata={x:0>2}  tss={x:0>2}", .{ ptr.base, ptr.limit, KERNEL_CODE, KERNEL_DATA, TSS_SEL });
 
     asm volatile (
         \\lgdt (%[ptr])
@@ -97,7 +109,7 @@ pub fn init() void {
         : .{ .rax = true, .memory = true }
     );
 
-    owos.serial.writeln("GDT loaded");
+    owos.klog.info("GDT: loaded", .{});
 }
 
 pub fn set_kernel_stack(rsp0: u64) void {

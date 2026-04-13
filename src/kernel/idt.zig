@@ -68,6 +68,9 @@ comptime {
 
 var idt_table: [256]IdtEntry = [_]IdtEntry{.{}} ** 256;
 
+pub var idt_base: u64 = 0;
+pub var idt_limit: u16 = 0;
+
 const IdtPtr = packed struct {
     limit: u16,
     base: u64,
@@ -147,29 +150,41 @@ export fn isrCommon() callconv(.naked) void {
     );
 }
 
+fn pf_handler(frame: *InterruptFrame) void {
+    var cr2: u64 = undefined;
+    asm volatile ("mov %%cr2, %[v]" : [v] "=r" (cr2));
+    owos.klog.err("#PF  cr2={x:0>16}  err={x:0>4}  rip={x:0>16}", .{ cr2, frame.error_code, frame.rip });
+    while (true) asm volatile ("hlt");
+}
+
 export fn isrDispatch(frame: *InterruptFrame) void {
     if (handlers[@as(u8, @truncate(frame.vector))]) |handler| {
         handler(frame);
     } else {
-        const hex = "0123456789ABCDEF";
         const v: u8 = @truncate(frame.vector);
-        owos.serial.write("Unhandled interrupt: 0x");
-        owos.serial.write_byte(hex[v >> 4]);
-        owos.serial.write_byte(hex[v & 0xF]);
-        owos.serial.write_byte('\n');
+        owos.klog.err("Unhandled interrupt: 0x{X:0>2}  rip={x:0>16}  err={x:0>4}", .{ v, frame.rip, frame.error_code });
+        while (true) asm volatile ("hlt");
     }
 }
 
 pub fn init() void {
+    owos.klog.info("IDT: initializing...", .{});
+
     for (0..256) |i| {
         const ist: u3 = if (i == 8) 1 else 0;
         idt_table[i] = IdtEntry.gate(@intFromPtr(stubs[i]), ist, 0);
     }
 
+    set_handler(0x0E, pf_handler);
+
     const ptr = IdtPtr{
         .limit = @as(u16, @sizeOf(@TypeOf(idt_table)) - 1),
         .base = @intFromPtr(&idt_table),
     };
+    idt_base = ptr.base;
+    idt_limit = ptr.limit;
+
+    owos.klog.info("IDT: base={x:0>16}  limit={d}  #DF=IST1  #PF=handled", .{ ptr.base, ptr.limit });
 
     asm volatile ("lidt (%[ptr])"
         :
@@ -177,5 +192,5 @@ pub fn init() void {
         : .{ .memory = true }
     );
 
-    owos.serial.writeln("IDT loaded");
+    owos.klog.info("IDT: loaded", .{});
 }

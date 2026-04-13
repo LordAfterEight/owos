@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) !void {
-    const optimize = b.standardOptimizeOption(.{});
+    const optimize = std.builtin.OptimizeMode.Debug;
 
     const Target = std.Target.x86;
     const target = b.resolveTargetQuery(.{
@@ -12,25 +12,27 @@ pub fn build(b: *std.Build) !void {
     });
 
     const limine_module = b.createModule(.{
-        .root_source_file = b.path("src/limine.zig"),
+        .root_source_file = b.path("src/kernel/limine.zig"),
         .target = target,
         .optimize = optimize,
         .code_model = .kernel,
     });
 
     const root_module = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/kernel/main.zig"),
         .target = target,
         .optimize = optimize,
         .code_model = .kernel,
     });
 
     const owos_module = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/kernel/root.zig"),
         .target = target,
         .optimize = optimize,
         .code_model = .kernel,
     });
+
+    owos_module.addImport("limine", limine_module);
 
     root_module.addImport("limine", limine_module);
     root_module.addImport("owos", owos_module);
@@ -39,7 +41,7 @@ pub fn build(b: *std.Build) !void {
         .name = "kernel.elf",
         .root_module = root_module,
     });
-    kernel.setLinkerScript(b.path("src/linker.ld"));
+    kernel.setLinkerScript(b.path("src/kernel/linker.ld"));
     kernel.use_lld = true;
     kernel.use_llvm = true;
 
@@ -82,7 +84,7 @@ pub fn build(b: *std.Build) !void {
     // Run QEMU with the ISO
     const qemu = b.addSystemCommand(&.{
         "qemu-system-x86_64",
-        "-m",      "1G",
+        "-m",      "16G",
         "-serial", "stdio",
         "-cdrom",
     });
