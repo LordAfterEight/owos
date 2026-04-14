@@ -9,6 +9,7 @@ pub const fb = struct {
 };
 pub const gdt = @import("gdt.zig");
 pub const idt = @import("idt.zig");
+pub const idt_tests = @import("idt_tests.zig");
 pub const pmm = @import("pmm/pmm.zig");
 pub const vmm = @import("vmm/vmm.zig");
 pub const ramfs = @import("ramfs/ramfs.zig");

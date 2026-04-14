@@ -2,6 +2,36 @@ const std = @import("std");
 const owos = @import("root.zig");
 const gdt = @import("gdt.zig");
 
+fn outb(port: u16, val: u8) void {
+    asm volatile ("outb %[val], %[port]"
+        :
+        : [port] "N{dx}" (port),
+          [val] "{al}" (val),
+    );
+}
+
+/// Remap the 8259 PIC so IRQ0-7 → 0x20-0x27 and IRQ8-15 → 0x28-0x2F,
+/// then mask every IRQ line.  Without this, IRQ0 (timer) fires at vector 8
+/// which is the CPU double-fault vector and shares the IST1 stack, leading
+/// to stack corruption and a triple fault.
+fn remap_and_mask_pic() void {
+    // ICW1: start init sequence (cascade, ICW4 needed)
+    outb(0x20, 0x11);
+    outb(0xA0, 0x11);
+    // ICW2: vector offsets — move IRQs above CPU exception range (0-31)
+    outb(0x21, 0x20); // master: IRQ0-7  → vectors 0x20-0x27
+    outb(0xA1, 0x28); // slave:  IRQ8-15 → vectors 0x28-0x2F
+    // ICW3: cascade wiring
+    outb(0x21, 0x04); // master: slave on IRQ2
+    outb(0xA1, 0x02); // slave:  cascade identity = 2
+    // ICW4: 8086/88 mode
+    outb(0x21, 0x01);
+    outb(0xA1, 0x01);
+    // Mask all IRQ lines — we're not handling any hardware IRQs yet
+    outb(0x21, 0xFF);
+    outb(0xA1, 0xFF);
+}
+
 pub const InterruptFrame = extern struct {
     r15: u64,
     r14: u64,
@@ -31,8 +61,12 @@ pub const Handler = *const fn (*InterruptFrame) void;
 
 var handlers: [256]?Handler = [_]?Handler{null} ** 256;
 
-pub fn set_handler(vector: u8, handler: Handler) void {
+pub fn set_handler(vector: u8, handler: ?Handler) void {
     handlers[vector] = handler;
+}
+
+pub fn get_handler(vector: u8) ?Handler {
+    return handlers[vector];
 }
 
 const IdtEntry = packed struct(u128) {
@@ -153,6 +187,8 @@ export fn isrCommon() callconv(.naked) void {
 fn pf_handler(frame: *InterruptFrame) void {
     var cr2: u64 = undefined;
     asm volatile ("mov %%cr2, %[v]" : [v] "=r" (cr2));
+    // Serial first — screen update must not re-fault before we halt.
+    owos.serial.println("#PF  cr2=0x{x:0>16}  err=0x{x:0>4}  rip=0x{x:0>16}", .{ cr2, frame.error_code, frame.rip });
     owos.klog.err("#PF  cr2={x:0>16}  err={x:0>4}  rip={x:0>16}", .{ cr2, frame.error_code, frame.rip });
     while (true) asm volatile ("hlt");
 }
@@ -162,6 +198,9 @@ export fn isrDispatch(frame: *InterruptFrame) void {
         handler(frame);
     } else {
         const v: u8 = @truncate(frame.vector);
+        // Serial first — guarantees diagnostic output even if screen logging
+        // causes a nested fault (e.g. during double-fault handling).
+        owos.serial.println("FATAL unhandled vector=0x{X:0>2}  rip=0x{x:0>16}  err=0x{x:0>4}", .{ v, frame.rip, frame.error_code });
         owos.klog.err("Unhandled interrupt: 0x{X:0>2}  rip={x:0>16}  err={x:0>4}", .{ v, frame.rip, frame.error_code });
         while (true) asm volatile ("hlt");
     }
@@ -169,6 +208,8 @@ export fn isrDispatch(frame: *InterruptFrame) void {
 
 pub fn init() void {
     owos.klog.info("IDT: initializing...", .{});
+    remap_and_mask_pic();
+    owos.klog.info("IDT: PIC remapped (0x20-0x2F) and all IRQs masked", .{});
 
     for (0..256) |i| {
         const ist: u3 = if (i == 8) 1 else 0;

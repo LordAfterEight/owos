@@ -260,6 +260,7 @@ pub const Font: [2048]u8 = .{
 };
 
 pub fn get_glyph(char: u8) []const u8 {
+    if (char >= 128) return Font[0..16]; // fallback to glyph 0 for non-ASCII
     const index = @as(usize, char) * 16;
     return Font[index .. index + 16];
 }

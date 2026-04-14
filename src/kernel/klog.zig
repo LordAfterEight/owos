@@ -9,6 +9,19 @@ const std = @import("std");
 const rendering = @import("rendering/rendering.zig");
 const Color = rendering.Color;
 
+pub const LoggingVerbosity = enum {
+    /// Pass/fail results and summary only.
+    quiet,
+    /// Results, section headers, and high-level operation summaries.
+    normal,
+    /// Full diagnostic output (hex dumps, nonce details, etc.).
+    verbose,
+};
+
+/// Current verbosity level.  Set before calling subsystems that produce
+/// heavy log output (e.g. the crypto test suite) and restore afterwards.
+pub var verbosity: LoggingVerbosity = .verbose;
+
 fn get_log() *rendering.ScrollingLog {
     return &rendering.ScrollingLog.instance;
 }
@@ -62,9 +75,10 @@ fn print_kv(
         };
 
         // Format the argument with its original spec and emit in val_color.
-        var val_buf: [128]u8 = undefined;
+        // Static buffer avoids a 128-byte stack allocation inside interrupt context.
+        const S = struct { var buf: [128]u8 = undefined; };
         const spec = fmt[next_open .. next_close + 1];
-        const s = std.fmt.bufPrint(&val_buf, spec, .{args[arg_idx]}) catch val_buf[0..];
+        const s = std.fmt.bufPrint(&S.buf, spec, .{args[arg_idx]}) catch S.buf[0..];
         log.print("{s}", .{s}, val_color);
 
         pos = next_close + 1;

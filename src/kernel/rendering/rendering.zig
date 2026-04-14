@@ -4,6 +4,11 @@ const limine = @import("limine");
 
 export var fb_request: limine.FramebufferRequest linksection(".limine_requests") = .{};
 
+/// Desired size of the on-screen log window in characters.
+/// Change these to resize the logging area without touching anything else.
+pub const LOG_COLS: usize = 180;
+pub const LOG_ROWS: usize = 67;
+
 /// Global framebuffer
 pub var GFB: *limine.Framebuffer = undefined;
 
@@ -15,6 +20,7 @@ pub var GFB_VALID: bool = false;
 
 
 pub const Color = enum(u32) {
+    Black = 0x000000,
     BrightYellow = 0xFFFF77,
     BrightRed = 0xFF7777,
     BrightGreen = 0x77FF77,
@@ -54,8 +60,8 @@ pub fn init_fb() !void {
     // Size the scrolling log to the actual framebuffer dimensions.
     const y_off = ScrollingLog.instance.y_offset;
     const avail_h = GFB_HEIGHT -| y_off;
-    ScrollingLog.instance.rows = @min(avail_h / ScrollingLog.char_height, ScrollingLog.max_rows);
-    ScrollingLog.instance.cols = @min(GFB_WIDTH / ScrollingLog.char_width, ScrollingLog.max_cols);
+    ScrollingLog.instance.rows = @min(avail_h / ScrollingLog.char_height, LOG_ROWS);
+    ScrollingLog.instance.cols = @min(GFB_WIDTH / ScrollingLog.char_width, LOG_COLS);
 
     owos.serial.write("  FB: addr=");
     owos.serial.write_hex64(@intFromPtr(GFB.address));
@@ -145,7 +151,7 @@ pub fn draw_rect(x: usize, y: usize, w: usize, h: usize, color: u32) void {
 }
 
 pub fn blit_pixel(x: usize, y: usize, color: u32) void {
-    if (GFB_VALID) {
+    if (GFB_VALID and x < GFB_WIDTH and y < GFB_HEIGHT) {
         const bytes_per_pixel = GFB.bpp / 8;
         const offset = y * GFB.pitch + x * bytes_per_pixel;
         for (0..bytes_per_pixel) |byte| {
@@ -187,6 +193,7 @@ pub const ScrollingLog = struct {
     text:       [max_rows][max_cols]u8    = [_][max_cols]u8{[_]u8{0} ** max_cols} ** max_rows,
     text_len:   [max_rows]usize           = [_]usize{0} ** max_rows,
     text_colors:[max_rows][max_cols]Color = [_][max_cols]Color{[_]Color{.White} ** max_cols} ** max_rows,
+    print_buf:  [max_cols]u8              = [_]u8{0} ** max_cols,
 
     pub var instance: ScrollingLog = .{};
 
@@ -211,12 +218,12 @@ pub const ScrollingLog = struct {
     }
 
     pub fn print(self: *ScrollingLog, comptime fmt: []const u8, args: anytype, color: Color) void {
-        var msgbuf: [max_cols]u8 = undefined;
-        const msg = std.fmt.bufPrint(&msgbuf, fmt, args) catch msgbuf[0..];
+        const msg = std.fmt.bufPrint(&self.print_buf, fmt, args) catch self.print_buf[0..];
         owos.serial.write(msg);
 
         // Scroll if a previous newline pushed us past the last row.
         if (self.y_pos >= self.rows) {
+            // Shift text data first.
             for (0..self.rows - 1) |row| {
                 @memcpy(&self.text[row], &self.text[row + 1]);
                 @memcpy(&self.text_colors[row], &self.text_colors[row + 1]);
@@ -225,9 +232,15 @@ pub const ScrollingLog = struct {
             self.text_len[self.rows - 1] = 0;
             self.y_pos = self.rows - 1;
             self.x_pos = 0;
-            for (0..self.rows) |row| {
-                self.clearRow(row);
-                self.drawRow(row);
+            // Redraw every row from the text buffers.  This is write-only —
+            // reading from an MMIO framebuffer (the old pixel-shift approach)
+            // is orders of magnitude slower on real hardware.
+            // Interleaving clear+draw per row keeps flicker to a minimum.
+            if (GFB_VALID) {
+                for (0..self.rows) |row| {
+                    self.clearFullRow(row);
+                    self.drawRow(row);
+                }
             }
         }
 
@@ -266,7 +279,22 @@ pub const ScrollingLog = struct {
     fn clearRow(self: *const ScrollingLog, row: usize) void {
         if (!GFB_VALID) return;
         const bpp = GFB.bpp / 8;
-        const row_bytes = (2 + self.text_len[row] * char_width) * bpp;
+        // Cap at GFB.pitch to prevent writing past the end of a scan line,
+        // which would page-fault on page-aligned framebuffers (e.g. 1024x768).
+        const row_bytes = @min((2 + self.text_len[row] * char_width) * bpp, GFB.pitch);
+        const y = self.y_offset + row * char_height;
+        for (0..char_height) |dy| {
+            const off = (y + dy) * GFB.pitch;
+            @memset(GFB.address[off .. off + row_bytes], 0);
+        }
+    }
+
+    /// Clears the full column width of a row.  Used during scroll where the
+    /// old (pre-shift) content may have been wider than the new text_len.
+    fn clearFullRow(self: *const ScrollingLog, row: usize) void {
+        if (!GFB_VALID) return;
+        const bpp = GFB.bpp / 8;
+        const row_bytes = @min((2 + self.cols * char_width) * bpp, GFB.pitch);
         const y = self.y_offset + row * char_height;
         for (0..char_height) |dy| {
             const off = (y + dy) * GFB.pitch;

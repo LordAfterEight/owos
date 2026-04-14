@@ -74,6 +74,8 @@ export fn kmain() noreturn {
         0xbc, 0x06, 0xe8, 0x53, 0x24, 0xd0, 0x4b, 0x71,
     };
     owos.ramfs.init(ramfs_key);
+    owos.ramfs.crypto_tests.run_all(.normal);
+    owos.idt_tests.run_all(.normal);
 
     owos.klog.info("FB: {d}x{d}  bpp={d}  addr={x:0>16}", .{
         owos.fb.rendering.GFB_WIDTH,
@@ -85,8 +87,18 @@ export fn kmain() noreturn {
     const logging = &owos.fb.rendering.ScrollingLog.instance;
     const C = owos.fb.rendering.Color;
 
+    logging.newline();
+    logging.println("//----------------------------------------------------------------------------------------------------------//", .{}, C.Grey);
+
+    owos.klog.verbosity = .verbose;
+
+    logging.newline();
     var file = owos.ramfs.File.new("TestFile") catch unreachable;
-    logging.println("Created file: {s}", .{file.name()}, C.BrightBlue);
+    logging.println("Created file: {s}", .{file.name()}, C.BrightYellow);
+
+    var file2 = owos.ramfs.File.new("TestFile") catch unreachable;
+    logging.println("Created file: {s}", .{file2.name()}, C.BrightYellow);
+    _ = &file2;
 
     const written = file.write("Hello World!") catch 0;
     logging.println("Wrote {d} bytes to {s}", .{ written, file.name() }, C.BrightGreen);
@@ -106,7 +118,6 @@ export fn kmain() noreturn {
             logging.print(" {X:0>2}", .{byte}, C.Grey);
         }
     }
-    logging.newline();
 
     while (true) {
         asm volatile ("hlt");
