@@ -18,6 +18,43 @@ pub var GFB_HEIGHT: u64 = undefined;
 /// Flag that allows checking whether the global framebuffer exists
 pub var GFB_VALID: bool = false;
 
+/// Virtual base address for the back buffer (must not collide with HHDM or RAMFS).
+const BACKBUF_BASE: u64 = 0xffffa00000000000;
+
+/// Back buffer – null until init_back_buffer() succeeds.
+var back_buffer: ?[*]u8 = null;
+var back_buffer_size: usize = 0;
+
+/// Returns the render target: back buffer if available, otherwise the real framebuffer.
+fn target() [*]u8 {
+    return back_buffer orelse GFB.address;
+}
+
+/// Allocates pages for the back buffer and copies the current framebuffer into it.
+/// Must be called after PMM and VMM are initialised.
+pub fn init_back_buffer() void {
+    if (!GFB_VALID) return;
+    const size: usize = @intCast(GFB.height * GFB.pitch);
+    const pages = (size + 4095) / 4096;
+    const alloc_size: u64 = @as(u64, pages) * 4096;
+
+    owos.vmm.map_range(BACKBUF_BASE, alloc_size, owos.vmm.Flags.WRITE | owos.vmm.Flags.NX);
+
+    back_buffer = @ptrFromInt(BACKBUF_BASE);
+    back_buffer_size = size;
+
+    // Snapshot whatever is currently on screen so the first swap() is correct.
+    @memcpy(back_buffer.?[0..size], GFB.address[0..size]);
+
+    owos.klog.info("FB: back buffer at {x:0>16}  ({d} pages)", .{ BACKBUF_BASE, pages });
+}
+
+/// Copies the back buffer to the real framebuffer.  No-op before init_back_buffer().
+pub fn swap() void {
+    const bb = back_buffer orelse return;
+    @memcpy(GFB.address[0..back_buffer_size], bb[0..back_buffer_size]);
+}
+
 
 pub const Color = enum(u32) {
     Black = 0x000000,
@@ -135,27 +172,29 @@ pub fn test_fb() void {
 
 pub fn draw_rect(x: usize, y: usize, w: usize, h: usize, color: u32) void {
     if (!GFB_VALID or w == 0 or h == 0) return;
+    const buf = target();
     const bpp = GFB.bpp / 8;
     const first_row_off = y * GFB.pitch + x * bpp;
     for (0..w) |i| {
         const off = first_row_off + i * bpp;
         for (0..bpp) |b| {
-            GFB.address[off + b] = @truncate(color >> (@as(u5, @truncate(b)) * 8));
+            buf[off + b] = @truncate(color >> (@as(u5, @truncate(b)) * 8));
         }
     }
     const row_len = w * bpp;
     for (1..h) |dy| {
         const dst_off = (y + dy) * GFB.pitch + x * bpp;
-        @memcpy(GFB.address[dst_off .. dst_off + row_len], GFB.address[first_row_off .. first_row_off + row_len]);
+        @memcpy(buf[dst_off .. dst_off + row_len], buf[first_row_off .. first_row_off + row_len]);
     }
 }
 
 pub fn blit_pixel(x: usize, y: usize, color: u32) void {
     if (GFB_VALID and x < GFB_WIDTH and y < GFB_HEIGHT) {
+        const buf = target();
         const bytes_per_pixel = GFB.bpp / 8;
         const offset = y * GFB.pitch + x * bytes_per_pixel;
         for (0..bytes_per_pixel) |byte| {
-            GFB.address[offset + byte] = @as(u8, @truncate((color >> (@as(u5, @truncate(byte)) * 8)) & 0xFF));
+            buf[offset + byte] = @as(u8, @truncate((color >> (@as(u5, @truncate(byte)) * 8)) & 0xFF));
         }
     }
 }
@@ -257,9 +296,31 @@ pub const ScrollingLog = struct {
         self.drawRow(self.y_pos);
     }
 
+    pub fn backspace(self: *ScrollingLog) void {
+        if (self.x_pos > 0) {
+            // Erase the character cell being removed before shrinking text_len,
+            // otherwise clearRow won't reach it.
+            const col = self.x_pos - 1;
+            const px = 2 + col * char_width;
+            const y = self.y_offset + self.y_pos * char_height;
+            if (GFB_VALID) {
+                const buf = target();
+                const bpp = GFB.bpp / 8;
+                for (0..char_height) |dy| {
+                    const off = (y + dy) * GFB.pitch + px * bpp;
+                    @memset(buf[off .. off + char_width * bpp], 0);
+                }
+            }
+            self.x_pos = col;
+            self.text[self.y_pos][col] = 0;
+            self.text_len[self.y_pos] = col;
+        }
+    }
+
     pub fn println(self: *ScrollingLog, comptime fmt: []const u8, args: anytype, color: Color) void {
         self.print(fmt, args, color);
         self.newline();
+        swap();
     }
 
     fn drawRow(self: *const ScrollingLog, row: usize) void {
@@ -278,6 +339,7 @@ pub const ScrollingLog = struct {
 
     fn clearRow(self: *const ScrollingLog, row: usize) void {
         if (!GFB_VALID) return;
+        const buf = target();
         const bpp = GFB.bpp / 8;
         // Cap at GFB.pitch to prevent writing past the end of a scan line,
         // which would page-fault on page-aligned framebuffers (e.g. 1024x768).
@@ -285,7 +347,7 @@ pub const ScrollingLog = struct {
         const y = self.y_offset + row * char_height;
         for (0..char_height) |dy| {
             const off = (y + dy) * GFB.pitch;
-            @memset(GFB.address[off .. off + row_bytes], 0);
+            @memset(buf[off .. off + row_bytes], 0);
         }
     }
 
@@ -293,12 +355,13 @@ pub const ScrollingLog = struct {
     /// old (pre-shift) content may have been wider than the new text_len.
     fn clearFullRow(self: *const ScrollingLog, row: usize) void {
         if (!GFB_VALID) return;
+        const buf = target();
         const bpp = GFB.bpp / 8;
         const row_bytes = @min((2 + self.cols * char_width) * bpp, GFB.pitch);
         const y = self.y_offset + row * char_height;
         for (0..char_height) |dy| {
             const off = (y + dy) * GFB.pitch;
-            @memset(GFB.address[off .. off + row_bytes], 0);
+            @memset(buf[off .. off + row_bytes], 0);
         }
     }
 };

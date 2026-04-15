@@ -66,6 +66,8 @@ export fn kmain() noreturn {
     owos.vmm.init();
     owos.vmm.map_range(owos.ramfs.RAMFS_BASE, owos.ramfs.RAMFS_SIZE, owos.vmm.Flags.WRITE | owos.vmm.Flags.NX);
 
+    owos.fb.rendering.init_back_buffer();
+
     // TODO: replace with a key derived from hardware entropy (RDRAND/RDSEED).
     const ramfs_key = [_]u8{
         0x3a, 0xf1, 0x7c, 0x04, 0xb8, 0x29, 0xe5, 0x6d,
@@ -74,8 +76,8 @@ export fn kmain() noreturn {
         0xbc, 0x06, 0xe8, 0x53, 0x24, 0xd0, 0x4b, 0x71,
     };
     owos.ramfs.init(ramfs_key);
-    owos.ramfs.crypto_tests.run_all(.normal);
-    owos.idt_tests.run_all(.normal);
+    owos.ramfs.crypto_tests.run_all(.quiet);
+    owos.idt_tests.run_all(.quiet);
 
     owos.klog.info("FB: {d}x{d}  bpp={d}  addr={x:0>16}", .{
         owos.fb.rendering.GFB_WIDTH,
@@ -93,33 +95,8 @@ export fn kmain() noreturn {
     owos.klog.verbosity = .verbose;
 
     logging.newline();
-    var file = owos.ramfs.File.new("TestFile") catch unreachable;
-    logging.println("Created file: {s}", .{file.name()}, C.BrightYellow);
 
-    var file2 = owos.ramfs.File.new("TestFile") catch unreachable;
-    logging.println("Created file: {s}", .{file2.name()}, C.BrightYellow);
-    _ = &file2;
-
-    const written = file.write("Hello World!") catch 0;
-    logging.println("Wrote {d} bytes to {s}", .{ written, file.name() }, C.BrightGreen);
-
-    var read_buf: [256]u8 = undefined;
-    const file_data = file.read_all(&read_buf) catch {
-        owos.klog.err("FATAL: ramfs decryption failed", .{});
-        while (true) asm volatile ("hlt");
-    };
-
-    logging.print("Read {d} bytes from file {s}:", .{file_data.len, file.name()}, C.BrightGreen);
-
-    for (file_data) |byte| {
-        if (byte != 0) {
-            logging.print(" {X:0>2}", .{byte}, C.BrightMagenta);
-        } else {
-            logging.print(" {X:0>2}", .{byte}, C.Grey);
-        }
-    }
-
-    while (true) {
-        asm volatile ("hlt");
-    }
+    owos.ps2.init();
+    var shell = owos.shell.Shell.init();
+    shell.run();
 }

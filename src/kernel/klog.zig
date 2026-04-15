@@ -92,6 +92,7 @@ pub fn info(comptime fmt: []const u8, args: anytype) void {
     if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
     print_kv(fmt[pfx..], args, .White, .BrightBlue);
     log.newline();
+    rendering.swap();
 }
 
 pub fn warn(comptime fmt: []const u8, args: anytype) void {
@@ -100,6 +101,7 @@ pub fn warn(comptime fmt: []const u8, args: anytype) void {
     if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
     print_kv(fmt[pfx..], args, .White, .BrightBlue);
     log.newline();
+    rendering.swap();
 }
 
 pub fn err(comptime fmt: []const u8, args: anytype) void {
@@ -108,4 +110,5 @@ pub fn err(comptime fmt: []const u8, args: anytype) void {
     if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
     print_kv(fmt[pfx..], args, .BrightRed, .BrightRed);
     log.newline();
+    rendering.swap();
 }

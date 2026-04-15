@@ -13,3 +13,5 @@ pub const idt_tests = @import("idt_tests.zig");
 pub const pmm = @import("pmm/pmm.zig");
 pub const vmm = @import("vmm/vmm.zig");
 pub const ramfs = @import("ramfs/ramfs.zig");
+pub const ps2 = @import("drivers/ps2.zig");
+pub const shell = @import("shell.zig");
