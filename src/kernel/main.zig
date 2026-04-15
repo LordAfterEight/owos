@@ -68,14 +68,13 @@ export fn kmain() noreturn {
 
     owos.fb.rendering.init_back_buffer();
 
-    // TODO: replace with a key derived from hardware entropy (RDRAND/RDSEED).
-    const ramfs_key = [_]u8{
-        0x3a, 0xf1, 0x7c, 0x04, 0xb8, 0x29, 0xe5, 0x6d,
-        0x91, 0x0c, 0x52, 0xd7, 0x38, 0xaa, 0x14, 0xfe,
-        0x67, 0x2b, 0x8e, 0x40, 0x1d, 0xc3, 0x75, 0x9f,
-        0xbc, 0x06, 0xe8, 0x53, 0x24, 0xd0, 0x4b, 0x71,
-    };
+    owos.rdrand.init();
+
+    var ramfs_key: [32]u8 = undefined;
+    owos.rdrand.fill(&ramfs_key);
     owos.ramfs.init(ramfs_key);
+    // Wipe the stack copy immediately
+    @memset(&ramfs_key, 0);
     owos.ramfs.crypto_tests.run_all(.quiet);
     owos.idt_tests.run_all(.quiet);
 
@@ -86,17 +85,21 @@ export fn kmain() noreturn {
         @intFromPtr(owos.fb.rendering.GFB.address),
     });
 
+    owos.acpi.init();
+    owos.ps2.init();
+
     const logging = &owos.fb.rendering.ScrollingLog.instance;
-    const C = owos.fb.rendering.Color;
 
     logging.newline();
-    logging.println("//----------------------------------------------------------------------------------------------------------//", .{}, C.Grey);
+    logging.println("//----------------------------------------------------------------------------------------------------------//", .{}, .Grey);
 
     owos.klog.verbosity = .verbose;
 
     logging.newline();
 
-    owos.ps2.init();
+    owos.serial.enabled = false;
+    owos.klog.warn("SERIAL: output disabled for security. Use 'serial on' in shell to re-enable", .{});
+
     var shell = owos.shell.Shell.init();
     shell.run();
 }

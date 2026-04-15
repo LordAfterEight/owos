@@ -94,6 +94,19 @@ pub const MemMapRequest = extern struct {
     response: ?*MemMapResponse = null,
 };
 
+// ── RSDP ────────────────────────────────────────────────────────────────────
+
+pub const RsdpResponse = extern struct {
+    revision: u64,
+    address: u64,
+};
+
+pub const RsdpRequest = extern struct {
+    id: [4]u64 = .{ common_magic[0], common_magic[1], 0xc5e77b6b397e7b43, 0x27637845accdcf3c },
+    revision: u64 = 0,
+    response: ?*RsdpResponse = null,
+};
+
 // ── Kernel address ───────────────────────────────────────────────────────────
 
 pub const KernelAddressResponse = extern struct {

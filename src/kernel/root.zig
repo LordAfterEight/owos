@@ -14,4 +14,6 @@ pub const pmm = @import("pmm/pmm.zig");
 pub const vmm = @import("vmm/vmm.zig");
 pub const ramfs = @import("ramfs/ramfs.zig");
 pub const ps2 = @import("drivers/ps2.zig");
+pub const rdrand = @import("rdrand.zig");
+pub const acpi = @import("drivers/acpi.zig");
 pub const shell = @import("shell.zig");

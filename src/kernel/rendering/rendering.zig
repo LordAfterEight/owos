@@ -49,10 +49,66 @@ pub fn init_back_buffer() void {
     owos.klog.info("FB: back buffer at {x:0>16}  ({d} pages)", .{ BACKBUF_BASE, pages });
 }
 
+/// When true, swap() draws a "[LOCKDOWN]" indicator in the upper-right corner
+/// of the front buffer after every blit.
+pub var lockdown_overlay: bool = false;
+
 /// Copies the back buffer to the real framebuffer.  No-op before init_back_buffer().
 pub fn swap() void {
     const bb = back_buffer orelse return;
     @memcpy(GFB.address[0..back_buffer_size], bb[0..back_buffer_size]);
+    if (lockdown_overlay) draw_lockdown_badge();
+}
+
+/// Draws "[LOCKDOWN]" in pure red at the top-right corner, directly onto the
+/// front buffer so it is always visible and cannot be overwritten by the log.
+fn draw_lockdown_badge() void {
+    const label = "[LOCKDOWN]";
+    const label_w = label.len * 8; // 8 px per glyph
+    const padding = 6;
+    const badge_w = label_w + padding * 2;
+    const badge_h = 16 + padding * 2;
+    const x = @as(usize, @intCast(GFB_WIDTH)) -| (badge_w + 4);
+    const y: usize = 4;
+    const fb = GFB.address;
+    const bpp = GFB.bpp / 8;
+
+    // Draw dark red background box
+    const bg: u32 = 0x200000;
+    for (0..badge_h) |dy| {
+        for (0..badge_w) |dx| {
+            const px = x + dx;
+            const py = y + dy;
+            if (px < GFB_WIDTH and py < GFB_HEIGHT) {
+                const off = py * GFB.pitch + px * bpp;
+                for (0..bpp) |b| {
+                    fb[off + b] = @truncate(bg >> (@as(u5, @truncate(b)) * 8));
+                }
+            }
+        }
+    }
+
+    // Draw glyphs directly onto the front buffer
+    const color: u32 = @intFromEnum(Color.PureRed);
+    const tx = x + padding;
+    const ty = y + padding;
+    for (label, 0..) |c, ci| {
+        const glyph = owos.fb.font.get_glyph(c);
+        for (glyph, 0..) |row, gy| {
+            for (0..8) |px_bit| {
+                if ((row >> @as(u3, @truncate(7 - px_bit))) & 1 != 0) {
+                    const px = tx + ci * 8 + px_bit;
+                    const py = ty + gy;
+                    if (px < GFB_WIDTH and py < GFB_HEIGHT) {
+                        const off = py * GFB.pitch + px * bpp;
+                        for (0..bpp) |b| {
+                            fb[off + b] = @truncate(color >> (@as(u5, @truncate(b)) * 8));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -75,6 +131,8 @@ pub const Color = enum(u32) {
     Green = 0x33FF33,
     Blue = 0x3333FF,
     Magenta = 0xFF33FF,
+
+    PureRed = 0xFF0000,
 
     White = 0xFFFFFF,
     BrightGrey = 0xAAAAAA,
@@ -249,6 +307,15 @@ pub const ScrollingLog = struct {
     /// and up to 3840 px wide / 8 px per col = 480 cols.
     pub const max_rows: usize = 256;
     pub const max_cols: usize = 480;
+
+    pub fn clear(self: *ScrollingLog) void {
+        for (0..self.rows) |row| {
+            self.text_len[row] = 0;
+            self.clearFullRow(row);
+        }
+        self.y_pos = 0;
+        self.x_pos = 0;
+    }
 
     pub fn newline(self: *ScrollingLog) void {
         owos.serial.write_byte('\n');

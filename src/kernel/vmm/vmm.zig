@@ -33,6 +33,28 @@ fn descend(table_phys: u64, idx: usize) u64 {
     return child;
 }
 
+/// Returns true if `virt` is backed by a present mapping (4K or large page).
+pub fn is_mapped(virt: u64) bool {
+    const pml4_idx = (virt >> 39) & 0x1FF;
+    const pdpt_idx = (virt >> 30) & 0x1FF;
+    const pd_idx   = (virt >> 21) & 0x1FF;
+    const pt_idx   = (virt >> 12) & 0x1FF;
+
+    const pml4_e = entry_ptr(pml4_phys, pml4_idx).*;
+    if (pml4_e & PRESENT == 0) return false;
+
+    const pdpt_e = entry_ptr(pml4_e & ADDR_MASK, pdpt_idx).*;
+    if (pdpt_e & PRESENT == 0) return false;
+    if (pdpt_e & (1 << 7) != 0) return true; // 1GB large page
+
+    const pd_e = entry_ptr(pdpt_e & ADDR_MASK, pd_idx).*;
+    if (pd_e & PRESENT == 0) return false;
+    if (pd_e & (1 << 7) != 0) return true; // 2MB large page
+
+    const pt_e = entry_ptr(pd_e & ADDR_MASK, pt_idx).*;
+    return pt_e & PRESENT != 0;
+}
+
 pub fn map_page(virt: u64, phys: u64, flags: u64) void {
     const pml4_idx = (virt >> 39) & 0x1FF;
     const pdpt_idx = (virt >> 30) & 0x1FF;

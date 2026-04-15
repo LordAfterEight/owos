@@ -79,5 +79,8 @@ pub fn free(phys: u64) void {
     if (phys < page_base) return;
     const p = (phys - page_base) / PAGE_SIZE;
     if (p >= page_count) return;
+    // Zero the page before releasing to prevent data leakage
+    const virt: [*]u8 = @ptrFromInt(phys_to_virt(phys));
+    @memset(virt[0..PAGE_SIZE], 0);
     bitmap[p / 8] &= ~(@as(u8, 1) << @as(u3, @truncate(p % 8)));
 }

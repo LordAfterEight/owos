@@ -85,6 +85,7 @@ pub fn build(b: *std.Build) !void {
     const qemu = b.addSystemCommand(&.{
         "qemu-system-x86_64",
         "-m",      "16G",
+        "-cpu",    "max",
         "-serial", "stdio",
         "-cdrom",
     });

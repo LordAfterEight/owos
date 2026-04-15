@@ -8,8 +8,79 @@ pub const RAMFS_BASE: usize = 0xffff900000000000;
 pub const RAMFS_SIZE: usize = 0x1_0000_0000;
 
 var bump: usize = 0;
-var master_key: [ChaCha20Poly1305.key_length]u8 = undefined;
+pub var master_key: [ChaCha20Poly1305.key_length]u8 = undefined;
 var file_id_counter: u64 = 0;
+
+const max_files = 64;
+var files: [max_files]?File = [_]?File{null} ** max_files;
+/// One past the highest occupied index. Shrinks on delete when possible.
+var high_water: usize = 0;
+
+fn find_free_slot() ?usize {
+    for (0..max_files) |i| {
+        if (files[i] == null) return i;
+    }
+    return null;
+}
+
+fn update_high_water() void {
+    while (high_water > 0 and files[high_water - 1] == null) {
+        high_water -= 1;
+    }
+}
+
+pub fn create_file(name: []const u8) !*File {
+    const slot = find_free_slot() orelse return error.FileLimitReached;
+    const file = try File.new(name);
+    files[slot] = file;
+    if (slot >= high_water) high_water = slot + 1;
+    return &(files[slot].?);
+}
+
+pub fn get_file(name: []const u8) ?*File {
+    for (files[0..high_water]) |*slot| {
+        if (slot.*) |*f| {
+            if (std.mem.eql(u8, f.name(), name)) return f;
+        }
+    }
+    return null;
+}
+
+pub fn get_file_count() usize {
+    var count: usize = 0;
+    for (files[0..high_water]) |slot| {
+        if (slot != null) count += 1;
+    }
+    return count;
+}
+
+pub fn get_files() []?File {
+    return files[0..high_water];
+}
+
+pub fn get_file_by_index(index: usize) ?*File {
+    if (index >= max_files) return null;
+    return if (files[index]) |*f| f else null;
+}
+
+pub fn count_by_name(name: []const u8) usize {
+    var count: usize = 0;
+    for (files[0..high_water]) |slot| {
+        if (slot) |f| {
+            if (std.mem.eql(u8, f.name(), name)) count += 1;
+        }
+    }
+    return count;
+}
+
+pub fn delete_file(index: usize) void {
+    if (index >= high_water) return;
+    if (files[index]) |*f| {
+        f.delete();
+        files[index] = null;
+        update_high_water();
+    }
+}
 
 fn bump_alloc(n: usize) []u8 {
     const base: [*]u8 = @ptrFromInt(RAMFS_BASE);
@@ -38,6 +109,15 @@ fn log_bytes(label: []const u8, bytes: []const u8) void {
     log.newline();
 }
 
+/// Like log_bytes but for sensitive data (keys, plaintext). Always redacted.
+fn log_bytes_redacted(label: []const u8, bytes: []const u8) void {
+    if (owos.klog.verbosity != .verbose) return;
+    const log = &owos.fb.rendering.ScrollingLog.instance;
+    log.print("RAMFS: ", .{}, .Grey);
+    log.print("{s}", .{label}, .White);
+    log.println("<redacted {d}B>", .{bytes.len}, .DarkRed);
+}
+
 // ---------------------------------------------------------------------------
 // Module init
 // ---------------------------------------------------------------------------
@@ -57,7 +137,7 @@ pub fn init(key: [ChaCha20Poly1305.key_length]u8) void {
             ChaCha20Poly1305.tag_length,
             ChaCha20Poly1305.nonce_length,
         });
-        log_bytes("master_key= ", &master_key);
+        log_bytes_redacted("master_key= ", &master_key);
     }
 }
 
@@ -122,7 +202,7 @@ pub const File = struct {
         if (owos.klog.verbosity == .verbose) {
             owos.klog.info("RAMFS: new \"{s}\"  file_id={d}  write_count={d}", .{ file.name(), id, file.write_count });
             log_bytes("initial_nonce= ", &file.nonce);
-            log_bytes("file_key= ", file.key);
+            log_bytes_redacted("file_key= ", file.key);
         }
 
         return file;
@@ -158,7 +238,7 @@ pub const File = struct {
             owos.klog.info("RAMFS: write \"{s}\"  existing={d}B  appending={d}B  new_total={d}B", .{
                 self.name(), self.size, buf.len, new_size,
             });
-            log_bytes("write_data= ", buf);
+            log_bytes_redacted("write_data= ", buf);
         }
 
         // Staging buffer for combined plaintext (bump-allocated; never freed).
@@ -183,7 +263,7 @@ pub const File = struct {
                 self.key.*,
             );
 
-            log_bytes("  decrypt.plaintext= ", plaintext[0..self.size]);
+            log_bytes_redacted("  decrypt.plaintext= ", plaintext[0..self.size]);
         }
 
         @memcpy(plaintext[self.size..new_size], buf);
@@ -193,7 +273,7 @@ pub const File = struct {
         std.mem.writeInt(u32, self.nonce[8..12], self.write_count, .little);
 
         if (log_verbose) owos.klog.info("RAMFS: write_count now {d}  nonce updated", .{self.write_count});
-        log_bytes("combined_plaintext= ", plaintext);
+        log_bytes_redacted("combined_plaintext= ", plaintext);
         log_bytes("encrypt.nonce= ", &self.nonce);
 
         const new_enc_data = bump_alloc(new_enc_size);
@@ -251,7 +331,7 @@ pub const File = struct {
             self.key.*,
         );
 
-        log_bytes("decrypt.plaintext= ", out[0..self.size]);
+        log_bytes_redacted("decrypt.plaintext= ", out[0..self.size]);
         if (log_verbose) owos.klog.info("RAMFS: auth tag verified  decryption successful", .{});
 
         return out[0..self.size];

@@ -2,8 +2,11 @@ const std = @import("std");
 
 const COM1: u16 = 0x3F8;
 
+pub var enabled: bool = true;
+
 /// Writes a single byte to serial port COM1
 pub fn write_byte(byte: u8) void {
+    if (!enabled) return;
     asm volatile ("outb %[val], %[port]"
         :
         : [port] "N{dx}" (COM1),
