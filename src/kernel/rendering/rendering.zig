@@ -292,6 +292,11 @@ pub const ScrollingLog = struct {
     text_colors:[max_rows][max_cols]Color = [_][max_cols]Color{[_]Color{.White} ** max_cols} ** max_rows,
     print_buf:  [max_cols]u8              = [_]u8{0} ** max_cols,
 
+    // Scrollback ring buffer
+    scroll_offset: usize = 0, // 0 = viewing live, >0 = lines scrolled back
+    scrollback_count: usize = 0, // how many lines are stored in scrollback
+    scrollback_head: usize = 0, // next write position in ring buffer
+
     pub var instance: ScrollingLog = .{};
 
     pub fn init() *ScrollingLog {
@@ -308,6 +313,11 @@ pub const ScrollingLog = struct {
     pub const max_rows: usize = 256;
     pub const max_cols: usize = 480;
 
+    const scrollback_lines: usize = 512;
+    var sb_text:   [scrollback_lines][max_cols]u8    = [_][max_cols]u8{[_]u8{0} ** max_cols} ** scrollback_lines;
+    var sb_colors: [scrollback_lines][max_cols]Color  = [_][max_cols]Color{[_]Color{.White} ** max_cols} ** scrollback_lines;
+    var sb_len:    [scrollback_lines]usize            = [_]usize{0} ** scrollback_lines;
+
     pub fn clear(self: *ScrollingLog) void {
         for (0..self.rows) |row| {
             self.text_len[row] = 0;
@@ -315,6 +325,9 @@ pub const ScrollingLog = struct {
         }
         self.y_pos = 0;
         self.x_pos = 0;
+        self.scroll_offset = 0;
+        self.scrollback_count = 0;
+        self.scrollback_head = 0;
     }
 
     pub fn newline(self: *ScrollingLog) void {
@@ -329,7 +342,18 @@ pub const ScrollingLog = struct {
 
         // Scroll if a previous newline pushed us past the last row.
         if (self.y_pos >= self.rows) {
-            // Shift text data first.
+            // Save the top line to scrollback before shifting
+            const head = self.scrollback_head;
+            @memcpy(&sb_text[head], &self.text[0]);
+            @memcpy(&sb_colors[head], &self.text_colors[0]);
+            sb_len[head] = self.text_len[0];
+            self.scrollback_head = (head + 1) % scrollback_lines;
+            if (self.scrollback_count < scrollback_lines) self.scrollback_count += 1;
+
+            // If we're scrolled back, track that the view shifted
+            if (self.scroll_offset > 0) self.scroll_offset += 1;
+
+            // Shift text data.
             for (0..self.rows - 1) |row| {
                 @memcpy(&self.text[row], &self.text[row + 1]);
                 @memcpy(&self.text_colors[row], &self.text_colors[row + 1]);
@@ -381,6 +405,78 @@ pub const ScrollingLog = struct {
             self.x_pos = col;
             self.text[self.y_pos][col] = 0;
             self.text_len[self.y_pos] = col;
+        }
+    }
+
+    pub fn scroll_up(self: *ScrollingLog) void {
+        if (self.scroll_offset >= self.scrollback_count) return;
+        self.scroll_offset += 1;
+        self.redraw_scrolled();
+        swap();
+    }
+
+    pub fn scroll_down(self: *ScrollingLog) void {
+        if (self.scroll_offset == 0) return;
+        self.scroll_offset -= 1;
+        self.redraw_scrolled();
+        swap();
+    }
+
+    pub fn redraw_scrolled(self: *ScrollingLog) void {
+        if (!GFB_VALID) return;
+
+        if (self.scroll_offset == 0) {
+            // Back to live view — redraw from text buffers
+            for (0..self.rows) |row| {
+                self.clearFullRow(row);
+                self.drawRow(row);
+            }
+            return;
+        }
+
+        // How many visible rows come from scrollback vs live text.
+        // scroll_offset lines of scrollback replace the bottom N live rows,
+        // pushing the live view upward — so scrollback lines appear at top.
+        const sb_rows = @min(self.scroll_offset, self.rows);
+
+        for (0..self.rows) |row| {
+            self.clearFullRow(row);
+
+            if (row < sb_rows) {
+                // Scrollback line. Row 0 = oldest visible, row sb_rows-1 = newest.
+                // The newest scrollback line is at (head - 1), we want offset lines back.
+                // Row 0 gets the line (offset) positions back from head.
+                // Row sb_rows-1 gets the line (offset - sb_rows + 1) positions back.
+                const age = self.scroll_offset - row;
+                const ring_idx = (self.scrollback_head + scrollback_lines - age) % scrollback_lines;
+                const len = sb_len[ring_idx];
+                if (len > 0) {
+                    const y = self.y_offset + row * char_height;
+                    var i: usize = 0;
+                    while (i < len) {
+                        const run_color = sb_colors[ring_idx][i];
+                        var j = i + 1;
+                        while (j < len and sb_colors[ring_idx][j] == run_color) j += 1;
+                        draw_text(2 + i * char_width, y, sb_text[ring_idx][i..j], @intFromEnum(run_color));
+                        i = j;
+                    }
+                }
+            } else {
+                // Live text buffer row
+                const live_row = row - sb_rows;
+                const len = self.text_len[live_row];
+                if (len > 0) {
+                    const y = self.y_offset + row * char_height;
+                    var i: usize = 0;
+                    while (i < len) {
+                        const run_color = self.text_colors[live_row][i];
+                        var j = i + 1;
+                        while (j < len and self.text_colors[live_row][j] == run_color) j += 1;
+                        draw_text(2 + i * char_width, y, self.text[live_row][i..j], @intFromEnum(run_color));
+                        i = j;
+                    }
+                }
+            }
         }
     }
 
