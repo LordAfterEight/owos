@@ -81,16 +81,28 @@ pub fn build(b: *std.Build) !void {
     install_iso.step.dependOn(&limine_bios.step);
     b.getInstallStep().dependOn(&install_iso.step);
 
+    // Create FAT32 test image if it doesn't exist
+    const mkfat = b.addSystemCommand(&.{
+        "sh", "-c", "test -f fat32.img || (truncate -s 32M fat32.img && mkfs.fat -F 32 -n OWOS fat32.img)",
+    });
+
     // Run QEMU with the ISO
     const qemu = b.addSystemCommand(&.{
         "qemu-system-x86_64",
         "-m",      "16G",
         "-cpu",    "max",
         "-serial", "stdio",
+        "-netdev", "user,id=n0",
+        "-device", "e1000,netdev=n0",
+        "-device", "ahci,id=ahci0",
+        "-drive",  "id=fat32disk,file=fat32.img,format=raw,if=none",
+        "-device", "ide-hd,drive=fat32disk,bus=ahci0.0",
+        "-boot",   "d",
         "-cdrom",
     });
     qemu.addFileArg(iso_file);
     qemu.step.dependOn(&limine_bios.step);
+    qemu.step.dependOn(&mkfat.step);
 
     const run_step = b.step("run", "Build ISO and run with QEMU");
     run_step.dependOn(&qemu.step);

@@ -297,39 +297,46 @@ pub const Shell = struct {
         if (std.mem.eql(u8, cmd, "help")) {
             self.log.println("Available commands:", .{}, .BrightYellow);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("befo <filename>                     Open vim-style editor (Basic Editor For OwOS)", .{}, .BrightBlue);
+            self.log.println("befo <filename>                           Start Basic Editor For OwOS", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("new <arg>                           Create a new object of type <arg>", .{}, .BrightBlue);
+            self.log.println("new <arg>                                 Create a new object of type <arg>", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("write <ref> <content>               Append text to a file", .{}, .BrightBlue);
+            self.log.println("write <ref> <content>                     Append text to a file", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("read <ref>                          Print file contents as text", .{}, .BrightBlue);
+            self.log.println("read <ref>                                Print file contents as text", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("dump <ref> [--keys]                 Hex dump (--keys to include keys)", .{}, .BrightMagenta);
+            self.log.println("dump <ref> [--keys]                       Hex dump (--keys to include keys)", .{}, .BrightMagenta);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("delete <ref>                        Delete a file", .{}, .BrightBlue);
+            self.log.println("delete <ref>                              Delete a file", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("list                                List all files", .{}, .BrightBlue);
+            self.log.println("list                                      List all files", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("memdump <region|addr> [n]           Dump raw memory ('memdump regions')", .{}, .BrightMagenta);
+            self.log.println("memdump <region|addr> [n]                 Dump raw memory", .{}, .BrightMagenta);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("masterkey                           Display the master encryption key", .{}, .BrightMagenta);
+            self.log.println("masterkey                                 Display the master encryption key", .{}, .BrightMagenta);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("clear                               Clear the screen", .{}, .BrightBlue);
+            self.log.println("clear                                     Clear the screen", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("lockdown <passphrase>               Lock system, generate one-time code", .{}, .BrightMagenta);
+            self.log.println("lockdown <passphrase>                     Lock system", .{}, .BrightMagenta);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("unlock <pass> <code>                Unlock (2 failures = wipe)", .{}, .BrightMagenta);
+            self.log.println("unlock <pass> <code>                      Unlock (2 failures = wipe)", .{}, .BrightMagenta);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("serial on|off                       Toggle serial output", .{}, .BrightMagenta);
+            self.log.println("serial on|off                             Toggle serial output", .{}, .BrightMagenta);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("verbosity [quiet|normal|verbose]    Set logging verbosity", .{}, .BrightBlue);
+            self.log.println("verbosity [quiet|normal|verbose]          Set logging verbosity", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("layout [qwerty|qwertz]              Set keyboard layout", .{}, .BrightBlue);
+            self.log.println("layout [qwerty|qwertz]                    Set keyboard layout", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("shutdown                            Power off the machine", .{}, .BrightBlue);
+            self.log.println("ping <ip>                                 Send ICMP echo request", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("reboot                              Restart the machine", .{}, .BrightBlue);
+            self.log.println("wping <host|ip> [port]                    HTTP web ping (DNS + TCP)", .{}, .BrightBlue);
+            self.log.print("  - ", .{}, .Grey);
+            self.log.println("fat info|list|read|import|export|delete   FAT32 partition commands", .{}, .BrightBlue);
+            self.log.print("  - ", .{}, .Grey);
+            self.log.println("shutdown                                  Power off the machine", .{}, .BrightBlue);
+            self.log.print("  - ", .{}, .Grey);
+            self.log.println("reboot                                    Restart the machine", .{}, .BrightBlue);
+            self.log.newline();
             self.log.println("  Commands in magenta are restricted in lockdown mode.", .{}, .BrightMagenta);
             self.log.println("  <ref> = file name or #N index from 'list'", .{}, .Grey);
         } else if (std.mem.eql(u8, cmd, "list")) {
@@ -413,6 +420,12 @@ pub const Shell = struct {
             self.cmd_lockdown();
         } else if (std.mem.eql(u8, cmd, "befo")) {
             self.cmd_befo();
+        } else if (std.mem.eql(u8, cmd, "ping")) {
+            self.cmd_ping();
+        } else if (std.mem.eql(u8, cmd, "wping")) {
+            self.cmd_wping();
+        } else if (std.mem.eql(u8, cmd, "fat")) {
+            self.cmd_fat();
         } else if (std.mem.eql(u8, cmd, "new")) {
             if (self.token_count < 2) {
                 self.log.println("Usage: new <type>. See 'new --help'", .{}, .BrightYellow);
@@ -671,6 +684,225 @@ pub const Shell = struct {
         return std.fmt.parseInt(u64, digits, 16) catch null;
     }
 
+    fn cmd_ping(self: *Shell) void {
+        if (self.token_count < 2) {
+            self.log.println("Usage: ping <ip>", .{}, .BrightYellow);
+            return;
+        }
+        const ip = owos.net.parse_ip(self.tokens[1]) orelse {
+            self.log.println("Invalid IP address.", .{}, .BrightRed);
+            return;
+        };
+        if (!owos.e1000.ready) {
+            self.log.println("Network not available.", .{}, .BrightRed);
+            return;
+        }
+        var ip_buf: [15]u8 = undefined;
+        const ip_str = owos.net.format_ip(ip, &ip_buf);
+        self.log.print("PING {s} ...", .{ip_str}, .Grey);
+        self.log.newline();
+        rendering.swap();
+
+        const result = owos.net.ping(ip);
+        if (result) |r| {
+            self.log.print("Reply from {s}", .{ip_str}, .BrightGreen);
+            self.log.println("  ttl={d}", .{r.ttl}, .BrightBlue);
+        } else {
+            self.log.println("Request timed out.", .{}, .BrightRed);
+        }
+    }
+
+    fn cmd_fat(self: *Shell) void {
+        if (self.token_count >= 2 and std.mem.eql(u8, self.tokens[1], "mount")) {
+            self.log.println("Scanning for USB storage...", .{}, .Grey);
+            owos.xhci.init();
+            owos.usb_storage.init();
+            owos.fat32.init();
+            if (owos.fat32.mounted) {
+                self.log.println("FAT32 mounted.", .{}, .BrightGreen);
+            } else {
+                self.log.println("No FAT32 partition found.", .{}, .BrightRed);
+            }
+            return;
+        }
+        if (!owos.fat32.mounted) {
+            self.log.println("No FAT32 partition mounted. Use 'fat mount' to scan.", .{}, .BrightRed);
+            return;
+        }
+        if (self.token_count < 2) {
+            self.log.println("Usage: fat <mount|info|list|read|import|export|rm> [args]", .{}, .BrightYellow);
+            return;
+        }
+        const sub = self.tokens[1];
+        if (std.mem.eql(u8, sub, "info")) {
+            self.log.print("Volume: ", .{}, .Grey);
+            self.log.println("{s}", .{owos.fat32.volume_label[0..owos.fat32.volume_label_len]}, .BrightGreen);
+            self.log.println("Clusters: {d}  Root cluster: {d}", .{ owos.fat32.cluster_count(), owos.fat32.root_cluster }, .BrightBlue);
+        } else if (std.mem.eql(u8, sub, "list")) {
+            const cluster = if (self.token_count >= 3) blk: {
+                const entry = owos.fat32.resolve_path(self.tokens[2]) orelse {
+                    self.log.println("Path not found.", .{}, .BrightRed);
+                    return;
+                };
+                if (!entry.is_dir()) {
+                    self.log.println("Not a directory.", .{}, .BrightRed);
+                    return;
+                }
+                break :blk entry.cluster;
+            } else owos.fat32.root_cluster;
+
+            const entries = owos.fat32.list_dir(cluster);
+            if (entries.len == 0) {
+                self.log.println("(empty directory)", .{}, .Grey);
+                return;
+            }
+            for (entries) |e| {
+                if (e.is_dir()) {
+                    self.log.print("  <DIR>  ", .{}, .BrightBlue);
+                } else {
+                    self.log.print("  {d: >7} ", .{e.size}, .Grey);
+                }
+                self.log.println("{s}", .{e.get_name()}, .White);
+            }
+            self.log.println("{d} entries", .{entries.len}, .Grey);
+        } else if (std.mem.eql(u8, sub, "read")) {
+            if (self.token_count < 3) {
+                self.log.println("Usage: fat read <path>", .{}, .BrightYellow);
+                return;
+            }
+            const entry = owos.fat32.resolve_path(self.tokens[2]) orelse {
+                self.log.println("File not found.", .{}, .BrightRed);
+                return;
+            };
+            if (entry.is_dir()) {
+                self.log.println("Cannot read a directory. Use 'fat list'.", .{}, .BrightYellow);
+                return;
+            }
+            if (entry.size > 4096) {
+                self.log.println("File too large (max 4096 bytes for display).", .{}, .BrightYellow);
+                return;
+            }
+            var buf: [4096]u8 = undefined;
+            const n = owos.fat32.read_file(entry.cluster, entry.size, &buf);
+            if (n == 0) {
+                self.log.println("(empty file)", .{}, .Grey);
+            } else {
+                self.log.println("{s}", .{buf[0..n]}, .White);
+            }
+        } else if (std.mem.eql(u8, sub, "import")) {
+            if (self.token_count < 4) {
+                self.log.println("Usage: fat import <fatpath> <ramfs_name>", .{}, .BrightYellow);
+                return;
+            }
+            const entry = owos.fat32.resolve_path(self.tokens[2]) orelse {
+                self.log.println("File not found on FAT32.", .{}, .BrightRed);
+                return;
+            };
+            if (entry.is_dir()) {
+                self.log.println("Cannot import a directory.", .{}, .BrightRed);
+                return;
+            }
+            const name = self.tokens[3];
+            const file = ramfs.create_file(name) catch |e| {
+                self.log.print("RAMFS error: ", .{}, .BrightRed);
+                self.log.println("{s}", .{@errorName(e)}, .White);
+                return;
+            };
+            var buf: [4096]u8 = undefined;
+            const cap = @min(entry.size, 4096);
+            const n = owos.fat32.read_file(entry.cluster, cap, &buf);
+            _ = file.write(buf[0..n]) catch |e| {
+                self.log.print("Write error: ", .{}, .BrightRed);
+                self.log.println("{s}", .{@errorName(e)}, .White);
+                return;
+            };
+            self.log.print("Imported {d} bytes to RAMFS: ", .{n}, .BrightGreen);
+            self.log.println("{s}", .{name}, .White);
+        } else if (std.mem.eql(u8, sub, "export")) {
+            if (self.token_count < 4) {
+                self.log.println("Usage: fat export <ramfs_ref> <fatpath>", .{}, .BrightYellow);
+                return;
+            }
+            const r = self.resolve_file(self.tokens[2]) orelse return;
+            const fat_path = self.tokens[3];
+            var buf: [4096]u8 = undefined;
+            const data = r.file.read_all(&buf) catch |e| {
+                self.log.print("Read error: ", .{}, .BrightRed);
+                self.log.println("{s}", .{@errorName(e)}, .White);
+                return;
+            };
+            if (owos.fat32.create_file(owos.fat32.root_cluster, fat_path, data)) {
+                self.log.print("Exported {d} bytes to FAT32: ", .{data.len}, .BrightGreen);
+                self.log.println("{s}", .{fat_path}, .White);
+            } else {
+                self.log.println("Failed to write to FAT32.", .{}, .BrightRed);
+            }
+        } else if (std.mem.eql(u8, sub, "delete")) {
+            if (self.token_count < 3) {
+                self.log.println("Usage: fat delet <path>", .{}, .BrightYellow);
+                return;
+            }
+            if (owos.fat32.delete_file(self.tokens[2])) {
+                self.log.print("Deleted: ", .{}, .BrightGreen);
+                self.log.println("{s}", .{self.tokens[2]}, .White);
+            } else {
+                self.log.println("Failed to delete file.", .{}, .BrightRed);
+            }
+        } else {
+            self.log.println("Usage: fat <mount|info|list|read|import|export|delete> [args]", .{}, .BrightYellow);
+        }
+    }
+
+    fn cmd_wping(self: *Shell) void {
+        if (self.token_count < 2) {
+            self.log.println("Usage: wping <host|ip> [port]", .{}, .BrightYellow);
+            return;
+        }
+        if (!owos.e1000.ready) {
+            self.log.println("Network not available.", .{}, .BrightRed);
+            return;
+        }
+
+        const host = self.tokens[1];
+        const port: u16 = if (self.token_count >= 3)
+            std.fmt.parseInt(u16, self.tokens[2], 10) catch {
+                self.log.println("Invalid port number.", .{}, .BrightRed);
+                return;
+            }
+        else
+            80;
+
+        // Show resolving step if it looks like a hostname
+        const is_hostname = owos.net.parse_ip(host) == null;
+        if (is_hostname) {
+            self.log.print("Resolving {s} ...", .{host}, .Grey);
+            self.log.newline();
+            rendering.swap();
+        }
+
+        self.log.print("Connecting to {s}:{d} ...", .{ host, port }, .Grey);
+        self.log.newline();
+        rendering.swap();
+
+        const result = owos.net.wping(host, port);
+        if (result) |r| {
+            const line = r.status_line[0..r.status_len];
+            self.log.println("{s}", .{line}, .BrightGreen);
+            if (r.status_code >= 200 and r.status_code < 400) {
+                self.log.println("Web ping OK", .{}, .BrightGreen);
+            } else {
+                self.log.print("Web ping returned status ", .{}, .BrightYellow);
+                self.log.println("{d}", .{r.status_code}, .BrightYellow);
+            }
+        } else {
+            if (is_hostname and owos.net.parse_ip(host) == null) {
+                self.log.println("Failed (DNS resolution, connection, or timeout).", .{}, .BrightRed);
+            } else {
+                self.log.println("Connection failed or timed out.", .{}, .BrightRed);
+            }
+        }
+    }
+
     fn cmd_befo(self: *Shell) void {
         if (self.token_count < 2) {
             self.log.println("Usage: befo <filename>", .{}, .BrightYellow);
@@ -680,9 +912,11 @@ pub const Shell = struct {
         var ed = &owos.editor.Editor.instance;
         ed.open(fname);
         ed.run();
-        // Redraw the shell after editor exits
+        // Redraw the shell and print goodbye message after editor exits
         rendering.draw_rect(0, 0, rendering.GFB_WIDTH, rendering.GFB_HEIGHT, 0x000000);
         self.log.redraw_scrolled();
+        self.log.print("BEFO: ", .{}, .Grey);
+        self.log.println("Goodbye! :3", .{}, .White);
     }
 
     fn cmd_masterkey(self: *Shell) void {

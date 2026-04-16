@@ -1,5 +1,13 @@
+const std = @import("std");
 const owos = @import("owos");
 const limine = @import("limine");
+
+pub const panic = std.debug.FullPanic(kernel_panic);
+
+fn kernel_panic(msg: []const u8, ret_addr: ?usize) noreturn {
+    owos.klog.err("PANIC: {s} ret=0x{x}", .{ msg, ret_addr orelse 0 });
+    while (true) asm volatile ("hlt");
+}
 
 export fn _start() callconv(.naked) noreturn {
     asm volatile (
@@ -86,14 +94,17 @@ export fn kmain() noreturn {
     });
 
     owos.acpi.init();
+    owos.xhci.init();
+    owos.usb_storage.init();
+    owos.ahci.init();
+    owos.fat32.init();
+    owos.net.init();
     owos.ps2.init();
 
     const logging = &owos.fb.rendering.ScrollingLog.instance;
 
     logging.newline();
     logging.println("//----------------------------------------------------------------------------------------------------------//", .{}, .Grey);
-
-    owos.klog.verbosity = .verbose;
 
     logging.newline();
 

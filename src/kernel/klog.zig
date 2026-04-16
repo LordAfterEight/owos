@@ -20,7 +20,7 @@ pub const LoggingVerbosity = enum {
 
 /// Current verbosity level.  Set before calling subsystems that produce
 /// heavy log output (e.g. the crypto test suite) and restore afterwards.
-pub var verbosity: LoggingVerbosity = .verbose;
+pub var verbosity: LoggingVerbosity = .quiet;
 
 fn get_log() *rendering.ScrollingLog {
     return &rendering.ScrollingLog.instance;
