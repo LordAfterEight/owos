@@ -22,6 +22,6 @@ pub const xhci = @import("drivers/xhci.zig");
 pub const ahci = @import("drivers/ahci.zig");
 pub const usb_storage = @import("drivers/usb_storage.zig");
 pub const net = @import("net.zig");
-pub const fat32 = @import("fat32.zig");
+pub const owofs = @import("owofs.zig");
 pub const shell = @import("shell.zig");
 pub const editor = @import("editor.zig");

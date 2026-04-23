@@ -86,29 +86,83 @@ fn print_kv(
     }
 }
 
-pub fn info(comptime fmt: []const u8, args: anytype) void {
-    const log = get_log();
-    const pfx = comptime module_prefix_end(fmt);
-    if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
-    print_kv(fmt[pfx..], args, .White, .BrightBlue);
-    log.newline();
-    rendering.swap();
-}
-
-pub fn warn(comptime fmt: []const u8, args: anytype) void {
-    const log = get_log();
-    const pfx = comptime module_prefix_end(fmt);
-    if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
-    print_kv(fmt[pfx..], args, .White, .BrightBlue);
-    log.newline();
-    rendering.swap();
-}
-
+/// Errors — always printed regardless of verbosity.
 pub fn err(comptime fmt: []const u8, args: anytype) void {
     const log = get_log();
     const pfx = comptime module_prefix_end(fmt);
     if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
     print_kv(fmt[pfx..], args, .BrightRed, .BrightRed);
+    log.newline();
+    rendering.swap();
+}
+
+/// Warnings — printed at normal and verbose.
+pub fn warn(comptime fmt: []const u8, args: anytype) void {
+    if (verbosity == .quiet) return;
+    const log = get_log();
+    const pfx = comptime module_prefix_end(fmt);
+    if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
+    print_kv(fmt[pfx..], args, .White, .BrightBlue);
+    log.newline();
+    rendering.swap();
+}
+
+/// Informational — printed at normal and verbose.
+pub fn info(comptime fmt: []const u8, args: anytype) void {
+    if (verbosity == .quiet) return;
+    const log = get_log();
+    const pfx = comptime module_prefix_end(fmt);
+    if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
+    print_kv(fmt[pfx..], args, .White, .BrightBlue);
+    log.newline();
+    rendering.swap();
+}
+
+/// Debug / diagnostics — printed only at verbose.
+pub fn debug(comptime fmt: []const u8, args: anytype) void {
+    if (verbosity != .verbose) return;
+    const log = get_log();
+    const pfx = comptime module_prefix_end(fmt);
+    if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
+    print_kv(fmt[pfx..], args, .Grey, .BrightBlue);
+    log.newline();
+    rendering.swap();
+}
+
+// ── In-place progress updates ──────────────────────────────────────────
+//
+// Usage:
+//   klog.progress_start("MODULE: doing thing... ");   — prints prefix, no newline
+//   klog.progress_update("{d}/{d}", .{done, total});   — overwrites from saved column
+//   klog.progress_end("done!");                        — final text + newline
+
+var progress_col: usize = 0;
+
+/// Print a prefix and remember the cursor position for subsequent updates.
+/// Does NOT add a newline.  Always printed (even in quiet mode) since the
+/// caller explicitly opted into progress reporting.
+pub fn progress_start(comptime fmt: []const u8, args: anytype) void {
+    const log = get_log();
+    const pfx = comptime module_prefix_end(fmt);
+    if (comptime pfx > 0) log.print("{s}", .{fmt[0..pfx]}, .Grey);
+    print_kv(fmt[pfx..], args, .White, .BrightBlue);
+    progress_col = log.x_pos;
+    rendering.swap();
+}
+
+/// Rewind to the saved column and print new text.  No newline.
+pub fn progress_update(comptime fmt: []const u8, args: anytype) void {
+    const log = get_log();
+    log.rewind(progress_col);
+    print_kv(fmt, args, .BrightBlue, .BrightBlue);
+    rendering.swap();
+}
+
+/// Print final text at the progress column and end the line.
+pub fn progress_end(comptime fmt: []const u8, args: anytype, comptime color: Color) void {
+    const log = get_log();
+    log.rewind(progress_col);
+    print_kv(fmt, args, color, color);
     log.newline();
     rendering.swap();
 }

@@ -49,6 +49,7 @@ export fn kmain() noreturn {
     };
     owos.fb.rendering.test_fb(); // clears screen; everything logged after this is visible
 
+    owos.klog.verbosity = .normal;
     owos.klog.info("Kernel booting...", .{});
     owos.klog.info("SSE: CR0={x:0>16}  CR4={x:0>16}", .{ cr0, cr4 });
 
@@ -94,10 +95,7 @@ export fn kmain() noreturn {
     });
 
     owos.acpi.init();
-    owos.xhci.init();
-    owos.usb_storage.init();
     owos.ahci.init();
-    owos.fat32.init();
     owos.net.init();
     owos.ps2.init();
 
@@ -110,6 +108,7 @@ export fn kmain() noreturn {
 
     owos.serial.enabled = false;
     owos.klog.warn("SERIAL: output disabled for security. Use 'serial on' in shell to re-enable", .{});
+    owos.klog.verbosity = .quiet;
 
     var shell = owos.shell.Shell.init();
     shell.run();

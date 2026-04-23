@@ -200,7 +200,7 @@ fn abort_cmd() void {
 }
 
 fn wait_xfer() ?struct { cc: u8, rem: u32 } {
-    for (0..10_000_000) |_| {
+    for (0..200_000_000) |_| {
         if (poll_evt()) |e| {
             if ((e.ctrl >> 10) & 0x3F == TRB_XFER_EVENT)
                 return .{ .cc = @truncate(e.status >> 24), .rem = e.status & 0xFFFFFF };
@@ -262,7 +262,7 @@ pub fn init() void {
         return;
     }
 
-    mmap(mmio, 0x10000);
+    mmap(mmio, 0x20000);
     cap_base = pmm.phys_to_virt(mmio);
 
     const caplen: u32 = r32(cap_base) & 0xFF;
@@ -822,7 +822,7 @@ fn ctrl_in(rtype: u8, req: u8, val: u16, idx: u16, len: u16) ?usize {
     return @as(usize, len) -| @as(usize, ev.rem);
 }
 
-fn ctrl_out_nodata(rtype: u8, req: u8, val: u16, idx: u16) ?void {
+pub fn ctrl_out_nodata(rtype: u8, req: u8, val: u16, idx: u16) ?void {
     const setup = @as(u64, rtype) | (@as(u64, req) << 8) | (@as(u64, val) << 16) |
         (@as(u64, idx) << 32);
     ring_put(&ep0r, setup, 8, (TRB_SETUP << 10) | (1 << 6));
@@ -839,13 +839,25 @@ pub fn is_connected() bool {
     return r32(psc_addr(prt)) & 1 != 0; // CCS bit
 }
 
+fn recover_endpoint(ring: *Ring, dci: u32) void {
+    // Reset the endpoint to clear any stalled/error state
+    // Set TR Dequeue Pointer command to resync the ring
+    ring_put(&cr, 0, 0, (13 << 10) | (@as(u32, sid) << 24) | (dci << 16)); // Reset Endpoint
+    db_ring(0, 0);
+    _ = wait_cmd();
+    // Set TR Dequeue to current ring position
+    const deq = ring.phys + @as(u64, ring.i) * 16;
+    ring_put(&cr, deq | @as(u64, ring.c), 0, (14 << 10) | (@as(u32, sid) << 24) | (dci << 16)); // Set TR Dequeue
+    db_ring(0, 0);
+    _ = wait_cmd();
+    // Drain stale events
+    for (0..100) |_| {
+        if (poll_evt() == null) break;
+    }
+}
+
 pub fn bulk_out(data: []const u8) ?usize {
     if (!ready or data.len == 0) return null;
-    if (!is_connected()) {
-        owos.klog.warn("XHCI: device disconnected", .{});
-        ready = false;
-        return null;
-    }
     const len: usize = @min(data.len, 4096);
     const dst: [*]volatile u8 = @ptrFromInt(dbuf_v);
     for (0..len) |i| dst[i] = data[i];
@@ -864,11 +876,6 @@ pub fn bulk_out(data: []const u8) ?usize {
 
 pub fn bulk_in(buf: []u8) ?usize {
     if (!ready or buf.len == 0) return null;
-    if (!is_connected()) {
-        owos.klog.warn("XHCI: device disconnected", .{});
-        ready = false;
-        return null;
-    }
     const len: usize = @min(buf.len, 4096);
     ring_put(&bir, dbuf_p, @intCast(len), (TRB_NORMAL << 10) | (1 << 5));
     db_ring(sid, bi_dci);

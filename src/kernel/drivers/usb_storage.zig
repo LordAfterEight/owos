@@ -46,10 +46,7 @@ fn send_cbw(data_len: u32, flags: u8, cb: [16]u8, cb_len: u8) bool {
 
 fn recv_csw() bool {
     var csw: [13]u8 = undefined;
-    const n = xhci.bulk_in(&csw) orelse {
-        ready = false;
-        return false;
-    };
+    const n = xhci.bulk_in(&csw) orelse return false;
     if (n < 13) return false;
     if (csw[0] != 0x55 or csw[1] != 0x53 or csw[2] != 0x42 or csw[3] != 0x53) return false;
     return csw[12] == 0; // bCSWStatus == Passed
@@ -61,13 +58,44 @@ fn test_unit_ready() bool {
     return recv_csw();
 }
 
-fn sync_cache() void {
+pub fn test_unit_ready_pub() bool {
+    return test_unit_ready();
+}
+
+/// Perform a Bulk-Only Mass Storage Reset (class-specific request)
+/// followed by clearing HALT on both bulk endpoints.
+/// This resyncs the CBW/Data/CSW protocol state.
+pub fn bot_reset() void {
+    // BOT Reset: bmRequestType=0x21 (class, interface), bRequest=0xFF
+    _ = xhci.ctrl_out_nodata(0x21, 0xFF, 0, 0);
+    // Clear HALT on bulk endpoints
+    _ = xhci.ctrl_out_nodata(0x02, 1, 0, @as(u16, @truncate(xhci.bi_dci / 2)) | 0x80); // CLEAR_FEATURE(HALT) bulk IN
+    _ = xhci.ctrl_out_nodata(0x02, 1, 0, @as(u16, @truncate(xhci.bo_dci / 2))); // CLEAR_FEATURE(HALT) bulk OUT
+    tag +%= 1;
+}
+
+pub fn sync_cache() void {
     var cb: [16]u8 = .{0} ** 16;
     cb[0] = 0x35; // SYNCHRONIZE CACHE(10)
-    if (send_cbw(0, 0, cb, 10)) _ = recv_csw();
+    if (!send_cbw(0, 0, cb, 10)) return;
+    // CSW may take a while as the device flushes its internal cache.
+    // recv_csw uses wait_xfer which has a generous timeout.
+    _ = recv_csw();
 }
 
 // ── Sector I/O ─────────────────────────────────────────────────────────
+
+fn read_one(lba: u64, count: u32, out: []u8) bool {
+    const bytes: u32 = count * 512;
+    var cb: [16]u8 = .{0} ** 16;
+    cb[0] = 0x28; // READ(10)
+    std.mem.writeInt(u32, cb[2..6], @truncate(lba), .big);
+    std.mem.writeInt(u16, cb[7..9], @truncate(count), .big);
+
+    if (!send_cbw(bytes, 0x80, cb, 10)) return false;
+    _ = xhci.bulk_in(out[0 .. bytes]) orelse return false;
+    return recv_csw();
+}
 
 pub fn read_sectors(lba: u64, count: u32, out: []u8) bool {
     if (!ready or count == 0) return false;
@@ -79,24 +107,23 @@ pub fn read_sectors(lba: u64, count: u32, out: []u8) bool {
         const chunk: u32 = @min(remaining, 8);
         const bytes: usize = @as(usize, chunk) * 512;
 
-        var cb: [16]u8 = .{0} ** 16;
-        cb[0] = 0x28; // READ(10)
-        std.mem.writeInt(u32, cb[2..6], @truncate(cur_lba), .big);
-        std.mem.writeInt(u16, cb[7..9], @truncate(chunk), .big);
-
-        if (!send_cbw(@truncate(bytes), 0x80, cb, 10)) {
-            ready = false;
+        var ok = false;
+        for (0..5) |attempt| {
+            if (read_one(cur_lba, chunk, out[offset..][0..bytes])) {
+                ok = true;
+                break;
+            }
+            for (0..2_000_000) |_| asm volatile ("pause");
+            if (attempt == 2) {
+                bot_reset();
+            } else {
+                _ = test_unit_ready();
+            }
+        }
+        if (!ok) {
+            if (!xhci.is_connected()) ready = false;
             return false;
         }
-
-        const copy = @min(bytes, out.len - offset);
-        const got = xhci.bulk_in(out[offset..][0..copy]) orelse {
-            ready = false;
-            return false;
-        };
-        _ = got;
-
-        if (!recv_csw()) return false;
 
         offset += bytes;
         remaining -= chunk;
@@ -105,14 +132,15 @@ pub fn read_sectors(lba: u64, count: u32, out: []u8) bool {
     return true;
 }
 
-fn write_one_sector(lba: u64, sector: *[512]u8) bool {
+fn write_chunk(lba: u64, count: u32, data: []const u8) bool {
+    const bytes: u32 = count * 512;
     var cb: [16]u8 = .{0} ** 16;
     cb[0] = 0x2A; // WRITE(10)
     std.mem.writeInt(u32, cb[2..6], @truncate(lba), .big);
-    std.mem.writeInt(u16, cb[7..9], @as(u16, 1), .big);
+    std.mem.writeInt(u16, cb[7..9], @truncate(count), .big);
 
-    if (!send_cbw(512, 0x00, cb, 10)) return false;
-    _ = xhci.bulk_out(sector) orelse return false;
+    if (!send_cbw(bytes, 0x00, cb, 10)) return false;
+    _ = xhci.bulk_out(data[0..bytes]) orelse return false;
     return recv_csw();
 }
 
@@ -121,35 +149,46 @@ pub fn write_sectors(lba: u64, count: u32, data: []const u8) bool {
     var remaining: u32 = count;
     var cur_lba = lba;
     var offset: usize = 0;
+    var since_sync: u32 = 0;
 
-    // Write one sector at a time with retry for transient USB failures
     while (remaining > 0) {
-        var sector: [512]u8 = .{0} ** 512;
+        // Write one sector at a time — many USB sticks stall on multi-sector
+        // writes when their internal buffer fills up.
+        var buf: [512]u8 = .{0} ** 512;
         if (offset < data.len) {
             const copy = @min(512, data.len - offset);
-            @memcpy(sector[0..copy], data[offset..][0..copy]);
+            @memcpy(buf[0..copy], data[offset..][0..copy]);
         }
 
         var ok = false;
-        for (0..3) |attempt| {
-            if (write_one_sector(cur_lba, &sector)) {
+        for (0..8) |attempt| {
+            if (write_chunk(cur_lba, 1, &buf)) {
                 ok = true;
                 break;
             }
-            // Recovery: send TEST UNIT READY before retry
-            if (attempt < 2) {
+            for (0..5_000_000) |_| asm volatile ("pause");
+            if (attempt == 3) {
+                // Mid-way: try a BOT reset to resync protocol state
+                bot_reset();
+            } else if (attempt < 7) {
                 _ = test_unit_ready();
             }
         }
         if (!ok) {
             owos.klog.warn("USB-MSC: WRITE failed lba={d} after retries", .{cur_lba});
-            ready = false;
+            if (!xhci.is_connected()) ready = false;
             return false;
         }
 
         offset += 512;
         remaining -= 1;
         cur_lba += 1;
+        since_sync += 1;
+
+        if (since_sync >= 8) {
+            sync_cache();
+            since_sync = 0;
+        }
     }
     return true;
 }

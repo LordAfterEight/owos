@@ -9,6 +9,10 @@ const ChaCha20Poly1305 = std.crypto.aead.chacha_poly.ChaCha20Poly1305;
 const max_input = 256;
 const max_tokens = 32;
 
+// Static buffers for OwOFS import/export to avoid blowing the 16 KB kernel stack.
+var fs_io_buf: [4096]u8 = undefined;
+var fs_path_buf: [256]u8 = undefined;
+
 pub const Shell = struct {
     log: *rendering.ScrollingLog,
     buf: [max_input]u8 = undefined,
@@ -43,10 +47,20 @@ pub const Shell = struct {
         while (i < input.len and self.token_count < max_tokens) {
             while (i < input.len and input[i] == ' ') i += 1;
             if (i >= input.len) break;
-            const start = i;
-            while (i < input.len and input[i] != ' ') i += 1;
-            self.tokens[self.token_count] = input[start..i];
-            self.token_count += 1;
+            if (input[i] == '"') {
+                // Quoted token: skip opening quote, find closing quote
+                i += 1;
+                const start = i;
+                while (i < input.len and input[i] != '"') i += 1;
+                self.tokens[self.token_count] = input[start..i];
+                self.token_count += 1;
+                if (i < input.len) i += 1; // skip closing quote
+            } else {
+                const start = i;
+                while (i < input.len and input[i] != ' ') i += 1;
+                self.tokens[self.token_count] = input[start..i];
+                self.token_count += 1;
+            }
         }
     }
 
@@ -331,7 +345,7 @@ pub const Shell = struct {
             self.log.print("  - ", .{}, .Grey);
             self.log.println("wping <host|ip> [port]                    HTTP web ping (DNS + TCP)", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
-            self.log.println("fat info|list|read|import|export|delete   FAT32 partition commands", .{}, .BrightBlue);
+            self.log.println("fs scan|mount|format|info|list|read|...   OwOFS disk commands", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
             self.log.println("shutdown                                  Power off the machine", .{}, .BrightBlue);
             self.log.print("  - ", .{}, .Grey);
@@ -424,8 +438,8 @@ pub const Shell = struct {
             self.cmd_ping();
         } else if (std.mem.eql(u8, cmd, "wping")) {
             self.cmd_wping();
-        } else if (std.mem.eql(u8, cmd, "fat")) {
-            self.cmd_fat();
+        } else if (std.mem.eql(u8, cmd, "fs")) {
+            self.cmd_fs();
         } else if (std.mem.eql(u8, cmd, "new")) {
             if (self.token_count < 2) {
                 self.log.println("Usage: new <type>. See 'new --help'", .{}, .BrightYellow);
@@ -712,106 +726,252 @@ pub const Shell = struct {
         }
     }
 
-    fn cmd_fat(self: *Shell) void {
-        if (self.token_count >= 2 and std.mem.eql(u8, self.tokens[1], "mount")) {
-            self.log.println("Scanning for USB storage...", .{}, .Grey);
-            owos.xhci.init();
-            owos.usb_storage.init();
-            owos.fat32.init();
-            if (owos.fat32.mounted) {
-                self.log.println("FAT32 mounted.", .{}, .BrightGreen);
+    fn cmd_fs(self: *Shell) void {
+        if (self.token_count >= 2 and std.mem.eql(u8, self.tokens[1], "reset")) {
+            self.log.println("Resetting USB connection...", .{}, .Grey);
+            owos.usb_storage.bot_reset();
+            for (0..5_000_000) |_| asm volatile ("pause");
+            if (owos.usb_storage.test_unit_ready_pub()) {
+                self.log.println("USB device ready.", .{}, .BrightGreen);
             } else {
-                self.log.println("No FAT32 partition found.", .{}, .BrightRed);
+                self.log.println("USB device not responding. Try 'fs scan'.", .{}, .BrightRed);
             }
             return;
         }
-        if (!owos.fat32.mounted) {
-            self.log.println("No FAT32 partition mounted. Use 'fat mount' to scan.", .{}, .BrightRed);
+        if (self.token_count >= 2 and std.mem.eql(u8, self.tokens[1], "scan")) {
+            self.log.println("Scanning for storage devices...", .{}, .Grey);
+            if (!owos.xhci.ready) owos.xhci.init();
+            if (!owos.usb_storage.ready) owos.usb_storage.init();
+            owos.owofs.scan();
+            if (owos.owofs.partition_count == 0) {
+                self.log.println("No partitions found.", .{}, .BrightRed);
+            } else {
+                self.log.println("{d} partition(s) found:", .{owos.owofs.partition_count}, .BrightGreen);
+                for (owos.owofs.partitions[0..owos.owofs.partition_count], 0..) |p, i| {
+                    const backend: []const u8 = if (p.backend_usb) "USB" else "AHCI";
+                    const size_mb = if (p.sectors > 0) p.sectors / 2048 else 0;
+                    self.log.print("  [{d}] ", .{i}, .BrightYellow);
+                    self.log.print("{s}  LBA {d: >8}", .{ backend, p.lba }, .Grey);
+                    if (size_mb > 0) {
+                        self.log.print("  {d} MB", .{size_mb}, .Grey);
+                    }
+                    if (p.is_owofs) {
+                        self.log.print("  OwOFS", .{}, .BrightGreen);
+                        if (p.label_len > 0) {
+                            self.log.print(" \"{s}\"", .{p.label[0..p.label_len]}, .BrightGreen);
+                        }
+                    } else {
+                        self.log.print("  type=0x{X:0>2}", .{p.ptype}, .Grey);
+                    }
+                    self.log.println("", .{}, .White);
+                }
+                self.log.println("Use 'fs mount <N>' or 'fs format <N> [label]'.", .{}, .Grey);
+            }
+            return;
+        }
+        if (self.token_count >= 2 and std.mem.eql(u8, self.tokens[1], "format")) {
+            if (self.token_count < 3) {
+                self.log.println("Usage: fs format <N> [label]", .{}, .BrightYellow);
+                return;
+            }
+            if (owos.owofs.partition_count == 0) {
+                self.log.println("No partitions found. Run 'fs scan' first.", .{}, .BrightRed);
+                return;
+            }
+            const idx = std.fmt.parseInt(usize, self.tokens[2], 10) catch {
+                self.log.println("Invalid partition index.", .{}, .BrightRed);
+                return;
+            };
+            if (idx >= owos.owofs.partition_count) {
+                self.log.println("Partition index out of range.", .{}, .BrightRed);
+                return;
+            }
+            const label = if (self.token_count >= 4) self.tokens[3] else "OwOS";
+            if (owos.owofs.format_partition(idx, label)) {
+                self.log.print("Formatted partition [{d}] as OwOFS: ", .{idx}, .BrightGreen);
+                self.log.println("\"{s}\"", .{label}, .White);
+            } else {
+                self.log.println("Failed to format partition.", .{}, .BrightRed);
+            }
+            return;
+        }
+        if (self.token_count >= 2 and std.mem.eql(u8, self.tokens[1], "mount")) {
+            if (owos.owofs.partition_count == 0) {
+                self.log.println("Scanning for storage devices...", .{}, .Grey);
+                if (!owos.xhci.ready) owos.xhci.init();
+                if (!owos.usb_storage.ready) owos.usb_storage.init();
+                owos.owofs.scan();
+            }
+            if (owos.owofs.partition_count == 0) {
+                self.log.println("No partitions found.", .{}, .BrightRed);
+                return;
+            }
+            const idx = if (self.token_count >= 3)
+                std.fmt.parseInt(usize, self.tokens[2], 10) catch {
+                    self.log.println("Invalid partition index.", .{}, .BrightRed);
+                    return;
+                }
+            else blk: {
+                // Auto-select first OwOFS partition
+                for (owos.owofs.partitions[0..owos.owofs.partition_count], 0..) |p, i| {
+                    if (p.is_owofs) break :blk i;
+                }
+                break :blk owos.owofs.partition_count - 1;
+            };
+
+            if (owos.owofs.mount_partition(idx)) {
+                self.log.print("Mounted OwOFS partition [{d}]: ", .{idx}, .BrightGreen);
+                self.log.println("\"{s}\"", .{owos.owofs.volume_label[0..owos.owofs.volume_label_len]}, .White);
+            } else {
+                self.log.println("Not an OwOFS partition. Use 'fs format <N>' first.", .{}, .BrightRed);
+            }
+            return;
+        }
+        if (self.token_count >= 2 and std.mem.eql(u8, self.tokens[1], "unmount")) {
+            if (!owos.owofs.mounted) {
+                self.log.println("Nothing is mounted.", .{}, .BrightYellow);
+            } else {
+                owos.owofs.unmount();
+                self.log.println("Unmounted.", .{}, .BrightGreen);
+            }
+            return;
+        }
+        if (!owos.owofs.mounted) {
+            self.log.println("No OwOFS partition mounted. Use 'fs scan' then 'fs mount <N>'.", .{}, .BrightRed);
             return;
         }
         if (self.token_count < 2) {
-            self.log.println("Usage: fat <mount|info|list|read|import|export|rm> [args]", .{}, .BrightYellow);
+            self.log.println("Usage: fs <scan|format|mount|unmount|info|list|read|write|import|export|delete|mkdir|rmdir|rename|label>", .{}, .BrightYellow);
             return;
         }
         const sub = self.tokens[1];
         if (std.mem.eql(u8, sub, "info")) {
             self.log.print("Volume: ", .{}, .Grey);
-            self.log.println("{s}", .{owos.fat32.volume_label[0..owos.fat32.volume_label_len]}, .BrightGreen);
-            self.log.println("Clusters: {d}  Root cluster: {d}", .{ owos.fat32.cluster_count(), owos.fat32.root_cluster }, .BrightBlue);
+            self.log.println("{s}", .{owos.owofs.volume_label[0..owos.owofs.volume_label_len]}, .BrightGreen);
+            const total = owos.owofs.data_blocks();
+            const free = owos.owofs.free_blocks();
+            const used = total - free;
+            self.log.print("Blocks: {d} total", .{total}, .BrightBlue);
+            self.log.print("  {d} used", .{used}, .BrightYellow);
+            self.log.println("  {d} free", .{free}, .BrightGreen);
+            self.log.print("Capacity: ", .{}, .Grey);
+            self.log.print("{d} KB total", .{total / 2}, .BrightBlue);
+            self.log.println("  {d} KB free", .{free / 2}, .BrightGreen);
+            self.log.println("Files: {d} / 1024", .{owos.owofs.file_count()}, .Grey);
         } else if (std.mem.eql(u8, sub, "list")) {
-            const cluster = if (self.token_count >= 3) blk: {
-                const entry = owos.fat32.resolve_path(self.tokens[2]) orelse {
+            const parent: u16 = if (self.token_count >= 3) blk: {
+                const resolved = owos.owofs.resolve_path(self.tokens[2]) orelse {
                     self.log.println("Path not found.", .{}, .BrightRed);
                     return;
                 };
-                if (!entry.is_dir()) {
+                if (!resolved.entry.is_dir()) {
                     self.log.println("Not a directory.", .{}, .BrightRed);
                     return;
                 }
-                break :blk entry.cluster;
-            } else owos.fat32.root_cluster;
+                break :blk @intCast(resolved.index);
+            } else 0xFFFF; // root
 
-            const entries = owos.fat32.list_dir(cluster);
-            if (entries.len == 0) {
+            const listing = owos.owofs.list_dir(parent);
+            if (listing.entries.len == 0) {
                 self.log.println("(empty directory)", .{}, .Grey);
                 return;
             }
-            for (entries) |e| {
+            for (listing.entries) |e| {
                 if (e.is_dir()) {
                     self.log.print("  <DIR>  ", .{}, .BrightBlue);
                 } else {
                     self.log.print("  {d: >7} ", .{e.size}, .Grey);
                 }
+                if (!e.is_dir() and e.is_encrypted()) {
+                    self.log.print("[enc] ", .{}, .BrightMagenta);
+                } else {
+                    self.log.print("      ", .{}, .Grey);
+                }
                 self.log.println("{s}", .{e.get_name()}, .White);
             }
-            self.log.println("{d} entries", .{entries.len}, .Grey);
+            self.log.println("{d} entries", .{listing.entries.len}, .Grey);
         } else if (std.mem.eql(u8, sub, "read")) {
             if (self.token_count < 3) {
-                self.log.println("Usage: fat read <path>", .{}, .BrightYellow);
+                self.log.println("Usage: fs read <path>", .{}, .BrightYellow);
                 return;
             }
-            const entry = owos.fat32.resolve_path(self.tokens[2]) orelse {
+            const resolved = owos.owofs.resolve_path(self.tokens[2]) orelse {
                 self.log.println("File not found.", .{}, .BrightRed);
                 return;
             };
-            if (entry.is_dir()) {
-                self.log.println("Cannot read a directory. Use 'fat list'.", .{}, .BrightYellow);
+            if (resolved.entry.is_dir()) {
+                self.log.println("Cannot read a directory. Use 'fs list'.", .{}, .BrightYellow);
                 return;
             }
-            if (entry.size > 4096) {
+            if (resolved.entry.size > 4096) {
                 self.log.println("File too large (max 4096 bytes for display).", .{}, .BrightYellow);
                 return;
             }
-            var buf: [4096]u8 = undefined;
-            const n = owos.fat32.read_file(entry.cluster, entry.size, &buf);
+            const n = owos.owofs.read_file(resolved, &fs_io_buf) orelse {
+                self.log.println("Read/decryption failed.", .{}, .BrightRed);
+                return;
+            };
             if (n == 0) {
                 self.log.println("(empty file)", .{}, .Grey);
             } else {
-                self.log.println("{s}", .{buf[0..n]}, .White);
+                self.log.println("{s}", .{fs_io_buf[0..n]}, .White);
             }
-        } else if (std.mem.eql(u8, sub, "import")) {
+        } else if (std.mem.eql(u8, sub, "write")) {
             if (self.token_count < 4) {
-                self.log.println("Usage: fat import <fatpath> <ramfs_name>", .{}, .BrightYellow);
+                self.log.println("Usage: fs write <path> <content> [--no-encrypt]", .{}, .BrightYellow);
                 return;
             }
-            const entry = owos.fat32.resolve_path(self.tokens[2]) orelse {
-                self.log.println("File not found on FAT32.", .{}, .BrightRed);
+            const content = self.rest_after_token(2) orelse {
+                self.log.println("Usage: fs write <path> <content>", .{}, .BrightYellow);
                 return;
             };
-            if (entry.is_dir()) {
+            const no_enc = self.has_flag("--no-encrypt");
+            if (owos.owofs.write_file(self.tokens[2], content, no_enc)) {
+                self.log.print("Wrote {d} bytes to OwOFS: ", .{content.len}, .BrightGreen);
+                self.log.println("{s}", .{self.tokens[2]}, .White);
+            } else {
+                self.log.println("Failed to write file.", .{}, .BrightRed);
+            }
+        } else if (std.mem.eql(u8, sub, "import")) {
+            if (self.token_count < 3) {
+                self.log.println("Usage: fs import <fspath> [ramfs_name]", .{}, .BrightYellow);
+                return;
+            }
+            const resolved = owos.owofs.resolve_path(self.tokens[2]) orelse {
+                self.log.println("File not found on OwOFS.", .{}, .BrightRed);
+                return;
+            };
+            if (resolved.entry.is_dir()) {
                 self.log.println("Cannot import a directory.", .{}, .BrightRed);
                 return;
             }
-            const name = self.tokens[3];
+            const name = if (self.token_count >= 4) self.tokens[3] else blk: {
+                const src = self.tokens[2];
+                var last_slash: usize = src.len;
+                while (last_slash > 0) {
+                    last_slash -= 1;
+                    if (src[last_slash] == '/') {
+                        last_slash += 1;
+                        break;
+                    }
+                    if (last_slash == 0) break;
+                }
+                break :blk src[last_slash..];
+            };
+            if (name.len == 0) {
+                self.log.println("Cannot derive filename from path.", .{}, .BrightRed);
+                return;
+            }
+            const n = owos.owofs.read_file(resolved, &fs_io_buf) orelse {
+                self.log.println("Read/decryption failed.", .{}, .BrightRed);
+                return;
+            };
             const file = ramfs.create_file(name) catch |e| {
                 self.log.print("RAMFS error: ", .{}, .BrightRed);
                 self.log.println("{s}", .{@errorName(e)}, .White);
                 return;
             };
-            var buf: [4096]u8 = undefined;
-            const cap = @min(entry.size, 4096);
-            const n = owos.fat32.read_file(entry.cluster, cap, &buf);
-            _ = file.write(buf[0..n]) catch |e| {
+            _ = file.write(fs_io_buf[0..n]) catch |e| {
                 self.log.print("Write error: ", .{}, .BrightRed);
                 self.log.println("{s}", .{@errorName(e)}, .White);
                 return;
@@ -819,37 +979,104 @@ pub const Shell = struct {
             self.log.print("Imported {d} bytes to RAMFS: ", .{n}, .BrightGreen);
             self.log.println("{s}", .{name}, .White);
         } else if (std.mem.eql(u8, sub, "export")) {
-            if (self.token_count < 4) {
-                self.log.println("Usage: fat export <ramfs_ref> <fatpath>", .{}, .BrightYellow);
+            if (self.token_count < 3) {
+                self.log.println("Usage: fs export <ramfs_ref> [fspath] [--no-encrypt]", .{}, .BrightYellow);
                 return;
             }
             const r = self.resolve_file(self.tokens[2]) orelse return;
-            const fat_path = self.tokens[3];
-            var buf: [4096]u8 = undefined;
-            const data = r.file.read_all(&buf) catch |e| {
+            const data = r.file.read_all(&fs_io_buf) catch |e| {
                 self.log.print("Read error: ", .{}, .BrightRed);
                 self.log.println("{s}", .{@errorName(e)}, .White);
                 return;
             };
-            if (owos.fat32.create_file(owos.fat32.root_cluster, fat_path, data)) {
-                self.log.print("Exported {d} bytes to FAT32: ", .{data.len}, .BrightGreen);
-                self.log.println("{s}", .{fat_path}, .White);
+            const no_enc = self.has_flag("--no-encrypt");
+            // Determine destination path
+            const fs_path = if (self.token_count >= 4 and !std.mem.eql(u8, self.tokens[3], "--no-encrypt")) blk: {
+                const arg = self.tokens[3];
+                if (arg.len > 0 and arg[arg.len - 1] == '/') {
+                    const src_name = r.file.name();
+                    const total = arg.len + src_name.len;
+                    if (total > fs_path_buf.len) {
+                        self.log.println("Path too long.", .{}, .BrightRed);
+                        return;
+                    }
+                    @memcpy(fs_path_buf[0..arg.len], arg);
+                    @memcpy(fs_path_buf[arg.len..][0..src_name.len], src_name);
+                    break :blk fs_path_buf[0..total];
+                }
+                break :blk arg;
+            } else blk: {
+                const src_name = r.file.name();
+                @memcpy(fs_path_buf[0..src_name.len], src_name);
+                break :blk fs_path_buf[0..src_name.len];
+            };
+
+            if (owos.owofs.write_file(fs_path, data, no_enc)) {
+                self.log.print("Exported {d} bytes to OwOFS: ", .{data.len}, .BrightGreen);
+                self.log.println("{s}", .{fs_path}, .White);
             } else {
-                self.log.println("Failed to write to FAT32.", .{}, .BrightRed);
+                self.log.println("Failed to write to OwOFS.", .{}, .BrightRed);
             }
-        } else if (std.mem.eql(u8, sub, "delete")) {
+        } else if (std.mem.eql(u8, sub, "delete") or std.mem.eql(u8, sub, "rm")) {
             if (self.token_count < 3) {
-                self.log.println("Usage: fat delet <path>", .{}, .BrightYellow);
+                self.log.println("Usage: fs delete <path>", .{}, .BrightYellow);
                 return;
             }
-            if (owos.fat32.delete_file(self.tokens[2])) {
+            if (owos.owofs.delete_file(self.tokens[2])) {
                 self.log.print("Deleted: ", .{}, .BrightGreen);
                 self.log.println("{s}", .{self.tokens[2]}, .White);
+            } else if (owos.owofs.rmdir(self.tokens[2])) {
+                self.log.print("Removed directory: ", .{}, .BrightGreen);
+                self.log.println("{s}", .{self.tokens[2]}, .White);
             } else {
-                self.log.println("Failed to delete file.", .{}, .BrightRed);
+                self.log.println("Failed to delete. (Directory not empty?)", .{}, .BrightRed);
+            }
+        } else if (std.mem.eql(u8, sub, "mkdir")) {
+            if (self.token_count < 3) {
+                self.log.println("Usage: fs mkdir <path>", .{}, .BrightYellow);
+                return;
+            }
+            if (owos.owofs.mkdir(self.tokens[2])) {
+                self.log.print("Created directory: ", .{}, .BrightGreen);
+                self.log.println("{s}", .{self.tokens[2]}, .White);
+            } else {
+                self.log.println("Failed to create directory.", .{}, .BrightRed);
+            }
+        } else if (std.mem.eql(u8, sub, "rmdir")) {
+            if (self.token_count < 3) {
+                self.log.println("Usage: fs rmdir <path>", .{}, .BrightYellow);
+                return;
+            }
+            if (owos.owofs.rmdir(self.tokens[2])) {
+                self.log.print("Removed directory: ", .{}, .BrightGreen);
+                self.log.println("{s}", .{self.tokens[2]}, .White);
+            } else {
+                self.log.println("Failed to remove directory (must be empty).", .{}, .BrightRed);
+            }
+        } else if (std.mem.eql(u8, sub, "rename")) {
+            if (self.token_count < 4) {
+                self.log.println("Usage: fs rename <path> <new_name>", .{}, .BrightYellow);
+                return;
+            }
+            if (owos.owofs.rename(self.tokens[2], self.tokens[3])) {
+                self.log.print("Renamed to: ", .{}, .BrightGreen);
+                self.log.println("{s}", .{self.tokens[3]}, .White);
+            } else {
+                self.log.println("Failed to rename.", .{}, .BrightRed);
+            }
+        } else if (std.mem.eql(u8, sub, "label")) {
+            if (self.token_count < 3) {
+                self.log.println("Usage: fs label <new_label>", .{}, .BrightYellow);
+                return;
+            }
+            if (owos.owofs.set_volume_label(self.tokens[2])) {
+                self.log.print("Volume label set to: ", .{}, .BrightGreen);
+                self.log.println("{s}", .{owos.owofs.volume_label[0..owos.owofs.volume_label_len]}, .White);
+            } else {
+                self.log.println("Failed to set volume label.", .{}, .BrightRed);
             }
         } else {
-            self.log.println("Usage: fat <mount|info|list|read|import|export|delete> [args]", .{}, .BrightYellow);
+            self.log.println("Usage: fs <scan|format|mount|unmount|info|list|read|write|import|export|delete|mkdir|rmdir|rename|label>", .{}, .BrightYellow);
         }
     }
 

@@ -47,6 +47,7 @@ const SC_LCTRL: u8 = 0x1D;
 var shift_held: bool = false;
 var alt_held: bool = false;
 var ctrl_held: bool = false;
+var altgr_held: bool = false;
 
 pub const Layout = enum {
     qwerty,
@@ -60,7 +61,7 @@ pub const Layout = enum {
     }
 };
 
-pub var layout: Layout = .qwerty;
+pub var layout: Layout = .qwertz;
 
 // Scan code set 1 → ASCII (unshifted, US QWERTY layout)
 const qwerty_table = [128]u8{
@@ -115,7 +116,7 @@ const qwertz_table = [128]u8{
     0,    ' ',  0,    0,    0,    0,    0,    0, // 0x38-0x3F
     0,    0,    0,    0,    0,    0,    0,    0, // 0x40-0x47
     0,    0,    '-',  0,    0,    0,    '+',  0, // 0x48-0x4F
-    0,    0,    0,    0,    0,    0,    0,    0, // 0x50-0x57
+    0,    0,    0,    0,    0,    0,    '<',  0, // 0x50-0x57 (0x56=<)
     0,    0,    0,    0,    0,    0,    0,    0, // 0x58-0x5F
     0,    0,    0,    0,    0,    0,    0,    0, // 0x60-0x67
     0,    0,    0,    0,    0,    0,    0,    0, // 0x68-0x6F
@@ -135,7 +136,29 @@ const qwertz_shifted = [128]u8{
     0,    ' ',  0,    0,    0,    0,    0,    0, // 0x38-0x3F
     0,    0,    0,    0,    0,    0,    0,    0, // 0x40-0x47
     0,    0,    '-',  0,    0,    0,    '+',  0, // 0x48-0x4F
-    0,    0,    0,    0,    0,    0,    0,    0, // 0x50-0x57
+    0,    0,    0,    0,    0,    0,    '>',  0, // 0x50-0x57 (0x56=>)
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x58-0x5F
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x60-0x67
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x68-0x6F
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x70-0x77
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x78-0x7F
+};
+
+// AltGr table for QWERTZ: scancode → ASCII when AltGr is held
+// AltGr+Q=@  AltGr+7={  AltGr+8=[  AltGr+9=]  AltGr+0=}
+// AltGr+ß(\)=\  AltGr++(0x1B)=~  AltGr+<(0x56)=|
+const qwertz_altgr = [128]u8{
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x00-0x07
+    '{',  '[',  ']',  '}',  '\\', 0,    0,    0, // 0x08-0x0F (7={, 8=[, 9=], 0=}, ß=\)
+    '@',  0,    0,    0,    0,    0,    0,    0, // 0x10-0x17 (Q=@)
+    0,    0,    0,    '~',  0,    0,    0,    0, // 0x18-0x1F (+=~)
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x20-0x27
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x28-0x2F
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x30-0x37
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x38-0x3F
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x40-0x47
+    0,    0,    0,    0,    0,    0,    0,    0, // 0x48-0x4F
+    0,    0,    0,    0,    0,    0,    '|',  0, // 0x50-0x57 (<=|)
     0,    0,    0,    0,    0,    0,    0,    0, // 0x58-0x5F
     0,    0,    0,    0,    0,    0,    0,    0, // 0x60-0x67
     0,    0,    0,    0,    0,    0,    0,    0, // 0x68-0x6F
@@ -147,6 +170,7 @@ pub const KeyEvent = struct {
     char: ?u8,
     alt: bool,
     ctrl: bool = false,
+    altgr: bool = false,
     arrow_up: bool = false,
     arrow_down: bool = false,
     arrow_left: bool = false,
@@ -180,8 +204,13 @@ pub fn process(scancode: u8) ?KeyEvent {
     if (e0_pending) {
         e0_pending = false;
         const released = scancode & 0x80 != 0;
-        if (released) return null;
         const code = scancode & 0x7F;
+        // AltGr is E0 38 (Right Alt)
+        if (code == SC_LALT) {
+            altgr_held = !released;
+            return null;
+        }
+        if (released) return null;
         if (code == EXT_ARROW_UP) return .{ .char = null, .alt = alt_held, .ctrl = ctrl_held, .arrow_up = true };
         if (code == EXT_ARROW_DOWN) return .{ .char = null, .alt = alt_held, .ctrl = ctrl_held, .arrow_down = true };
         if (code == EXT_ARROW_LEFT) return .{ .char = null, .alt = alt_held, .ctrl = ctrl_held, .arrow_left = true };
@@ -210,6 +239,12 @@ pub fn process(scancode: u8) ?KeyEvent {
     }
 
     if (released) return null;
+
+    // AltGr layer takes priority (QWERTZ only)
+    if (altgr_held and layout == .qwertz) {
+        const c = qwertz_altgr[code];
+        if (c != 0) return .{ .char = c, .alt = false, .ctrl = false, .altgr = true };
+    }
 
     const table = switch (layout) {
         .qwerty => if (shift_held) &qwerty_shifted else &qwerty_table,

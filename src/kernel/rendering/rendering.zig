@@ -131,6 +131,7 @@ pub const Color = enum(u32) {
     Green = 0x33FF33,
     Blue = 0x3333FF,
     Magenta = 0xFF33FF,
+    Orange = 0xFF8833,
 
     PureRed = 0xFF0000,
 
@@ -275,6 +276,53 @@ pub fn draw_text(x: usize, y: usize, msg: []const u8, color: u32) void {
     }
 }
 
+/// Draw text where each character can have a different color.
+/// `colors` must have the same length as `msg`.
+pub fn draw_text_colored(x: usize, y: usize, msg: []const u8, colors: []const u32) void {
+    var x_offset: usize = 0;
+    for (msg, 0..) |c, ci| {
+        const glyph = owos.fb.font.get_glyph(c);
+        var y_offset: usize = 0;
+        for (glyph) |row| {
+            for (0..8) |pixel| {
+                if ((row >> @as(u3, @truncate(7 - pixel))) & 1 != 0) {
+                    blit_pixel(x + x_offset + pixel, y + y_offset, colors[ci]);
+                }
+            }
+            y_offset += 1;
+        }
+        x_offset += 8;
+    }
+}
+
+/// Draw text at an arbitrary scale.  `scale` is an f32 multiplier applied to
+/// the base 8×16 glyph dimensions (e.g. 1.5 → 12×24 pixels per character).
+pub fn draw_text_scaled(x: usize, y: usize, msg: []const u8, color: u32, scale: f32) void {
+    if (scale <= 0) return;
+    const glyph_w: f32 = 8.0 * scale;
+    const glyph_h: f32 = 16.0 * scale;
+    const scaled_w: usize = @max(1, @as(usize, @intFromFloat(glyph_w)));
+    const scaled_h: usize = @max(1, @as(usize, @intFromFloat(glyph_h)));
+
+    var x_offset: usize = 0;
+    for (msg) |c| {
+        const glyph = owos.fb.font.get_glyph(c);
+        for (0..scaled_h) |py| {
+            // Map pixel row back to source row (0..15)
+            const src_y: usize = @min(15, @as(usize, @intFromFloat(@as(f32, @floatFromInt(py)) / scale)));
+            const row = glyph[src_y];
+            for (0..scaled_w) |px| {
+                // Map pixel col back to source col (0..7)
+                const src_x: usize = @min(7, @as(usize, @intFromFloat(@as(f32, @floatFromInt(px)) / scale)));
+                if ((row >> @as(u3, @truncate(7 - src_x))) & 1 != 0) {
+                    blit_pixel(x + x_offset + px, y + py, color);
+                }
+            }
+        }
+        x_offset += scaled_w;
+    }
+}
+
 pub const ScrollingLog = struct {
     y_pos: usize = 0,
     x_pos: usize = 0,
@@ -385,6 +433,33 @@ pub const ScrollingLog = struct {
 
         self.clearRow(self.y_pos);
         self.drawRow(self.y_pos);
+    }
+
+    /// Reset the cursor to `col` on the current line and clear everything
+    /// from that column to the end of the existing text.  Used for in-place
+    /// progress updates (e.g. a counter that overwrites itself).
+    pub fn rewind(self: *ScrollingLog, col: usize) void {
+        if (col >= self.cols) return;
+        const row = self.y_pos;
+        const old_len = self.text_len[row];
+        if (col < old_len) {
+            // Clear the pixel area from `col` to old_len
+            if (GFB_VALID) {
+                const buf = target();
+                const bpp = GFB.bpp / 8;
+                const px_start = 2 + col * char_width;
+                const px_end = 2 + old_len * char_width;
+                const byte_start = px_start * bpp;
+                const byte_end = @min(px_end * bpp, GFB.pitch);
+                const y = self.y_offset + row * char_height;
+                for (0..char_height) |dy| {
+                    const off = (y + dy) * GFB.pitch;
+                    @memset(buf[off + byte_start .. off + byte_end], 0);
+                }
+            }
+            self.text_len[row] = col;
+        }
+        self.x_pos = col;
     }
 
     pub fn backspace(self: *ScrollingLog) void {

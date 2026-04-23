@@ -8,7 +8,7 @@ const max_lines = 256;
 const max_line_len = 480;
 const max_yank = 32;
 
-const Mode = enum { normal, insert, visual, command, search };
+const Mode = enum { normal, insert, visual, command, search, preview };
 
 fn is_word(c: u8) bool {
     return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
@@ -59,6 +59,10 @@ pub const Editor = struct {
     pending: u8 = 0,
     count_buf: usize = 0,
 
+    // Filetype detection
+    is_markdown: bool = false,
+    preview_scroll: usize = 0,
+
     pub var instance: Editor = .{};
 
     // ═════════════════════════════════════════════════════════════════
@@ -78,6 +82,7 @@ pub const Editor = struct {
         const nlen = @min(name_arg.len, 32);
         @memcpy(self.filename[0..nlen], name_arg[0..nlen]);
         self.filename_len = nlen;
+        self.is_markdown = ends_with_ci(name_arg[0..nlen], ".md") or ends_with_ci(name_arg[0..nlen], ".omd");
         if (ramfs.get_file(name_arg)) |file| {
             self.is_new = false;
             var buf: [16384]u8 = undefined;
@@ -111,8 +116,12 @@ pub const Editor = struct {
                 .visual => self.handle_visual(ev),
                 .command => self.handle_command(ev),
                 .search => self.handle_search(ev),
+                .preview => self.handle_preview(ev),
             }
-            self.render();
+            if (self.mode == .preview)
+                self.render_preview()
+            else
+                self.render();
         }
     }
 
@@ -382,6 +391,9 @@ pub const Editor = struct {
         } else if (std.mem.eql(u8, cmd, "wq") or std.mem.eql(u8, cmd, "x")) {
             self.save();
             self.quit = true;
+        } else if (std.mem.eql(u8, cmd, "md")) {
+            self.preview_scroll = 0;
+            self.mode = .preview;
         } else if (std.fmt.parseInt(usize, cmd, 10)) |line_no| {
             if (line_no > 0 and line_no <= self.line_count) {
                 self.cy = line_no - 1;
@@ -1032,7 +1044,13 @@ pub const Editor = struct {
             if (ll > self.scroll_x) {
                 const vs = self.scroll_x;
                 const vl = @min(ll - vs, self.view_cols -| gutter);
-                rendering.draw_text(text_x, y, self.lines[li][vs .. vs + vl], @intFromEnum(C.White));
+                if (self.is_markdown) {
+                    var colors: [max_line_len]u32 = undefined;
+                    md_highlight_line(self.lines[li][0..ll], &colors);
+                    rendering.draw_text_colored(text_x, y, self.lines[li][vs .. vs + vl], colors[vs .. vs + vl]);
+                } else {
+                    rendering.draw_text(text_x, y, self.lines[li][vs .. vs + vl], @intFromEnum(C.White));
+                }
             }
         }
 
@@ -1111,6 +1129,337 @@ pub const Editor = struct {
     }
 
     // ═════════════════════════════════════════════════════════════════
+    // Preview mode (markdown rendering)
+    // ═════════════════════════════════════════════════════════════════
+
+    fn handle_preview(self: *Editor, ev: owos.ps2.KeyEvent) void {
+        if (ev.arrow_up) { self.preview_scroll -|= 20; return; }
+        if (ev.arrow_down) { self.preview_scroll +|= 20; return; }
+        const c = ev.char orelse return;
+        switch (c) {
+            0x1B, 'q' => self.mode = .normal,
+            'j' => self.preview_scroll +|= 20,
+            'k' => self.preview_scroll -|= 20,
+            ' ' => {
+                const fb_h: usize = @intCast(rendering.GFB_HEIGHT);
+                self.preview_scroll +|= fb_h -| 40;
+            },
+            else => {},
+        }
+    }
+
+    fn render_preview(self: *Editor) void {
+        const fb_w: usize = @intCast(rendering.GFB_WIDTH);
+        const fb_h: usize = @intCast(rendering.GFB_HEIGHT);
+        const ch = rendering.ScrollingLog.char_height;
+        const cw = rendering.ScrollingLog.char_width;
+        const margin_x: usize = cw * 4;
+
+        rendering.draw_rect(0, 0, fb_w, fb_h, 0x111111);
+
+        // Top bar
+        rendering.draw_rect(0, 0, fb_w, ch, 0x222244);
+        var title_buf: [80]u8 = undefined;
+        const title = std.fmt.bufPrint(&title_buf, "BEFO  {s}  [PREVIEW] q/Esc to exit", .{self.fname()}) catch "BEFO [PREVIEW]";
+        rendering.draw_text(cw, 0, title, @intFromEnum(C.BrightYellow));
+
+        // Render document
+        const y_cursor: usize = ch + 8; // start below top bar
+        const scroll = self.preview_scroll;
+
+        // We track a virtual y that includes scroll offset
+        var virtual_y: usize = 0;
+        var in_code_block = false;
+
+        var li: usize = 0;
+        while (li < self.line_count) : (li += 1) {
+            const line = self.lines[li][0..self.line_lens[li]];
+
+            // Skip leading whitespace for detection
+            var indent: usize = 0;
+            while (indent < line.len and line[indent] == ' ') indent += 1;
+            const trimmed = if (indent < line.len) line[indent..] else line[0..0];
+
+            // Code fence toggle
+            if (trimmed.len >= 3 and trimmed[0] == '`' and trimmed[1] == '`' and trimmed[2] == '`') {
+                in_code_block = !in_code_block;
+                // Draw a thin separator for the fence
+                const item_h: usize = 4;
+                if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                    const draw_y = virtual_y -| scroll;
+                    rendering.draw_rect(margin_x, draw_y + y_cursor, fb_w -| margin_x * 2, 1, @intFromEnum(C.DarkGrey));
+                }
+                virtual_y += item_h;
+                continue;
+            }
+
+            if (in_code_block) {
+                // Code block: draw with green on dark background
+                const item_h = ch + 2;
+                if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                    const draw_y = virtual_y -| scroll;
+                    rendering.draw_rect(margin_x -| 4, draw_y + y_cursor, fb_w -| margin_x * 2 + 8, item_h, 0x1a1a2e);
+                    if (line.len > 0)
+                        rendering.draw_text(margin_x, draw_y + y_cursor + 1, line, md_code);
+                }
+                virtual_y += item_h;
+                continue;
+            }
+
+            // Empty line: small vertical gap
+            if (trimmed.len == 0) {
+                virtual_y += ch / 2;
+                continue;
+            }
+
+            // Horizontal rule
+            if (trimmed[0] == '-' or trimmed[0] == '*' or trimmed[0] == '_') {
+                const rule_char = trimmed[0];
+                var rcount: usize = 0;
+                var all_rule = true;
+                for (trimmed) |rc| {
+                    if (rc == rule_char) rcount += 1
+                    else if (rc != ' ') { all_rule = false; break; }
+                }
+                if (all_rule and rcount >= 3) {
+                    const item_h: usize = ch;
+                    if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                        const draw_y = virtual_y -| scroll;
+                        rendering.draw_rect(margin_x, draw_y + y_cursor + ch / 2, fb_w -| margin_x * 2, 2, md_hr);
+                    }
+                    virtual_y += item_h;
+                    continue;
+                }
+            }
+
+            // Heading
+            if (trimmed[0] == '#') {
+                var lvl: usize = 0;
+                var p: usize = 0;
+                while (p < trimmed.len and trimmed[p] == '#' and lvl < 6) { lvl += 1; p += 1; }
+                if (p >= trimmed.len or trimmed[p] == ' ') {
+                    const text_start = if (p < trimmed.len and trimmed[p] == ' ') p + 1 else p;
+                    const heading_text = if (text_start < trimmed.len) trimmed[text_start..] else "";
+                    const scale: f32 = switch (lvl) {
+                        1 => 3.0,
+                        2 => 2.5,
+                        3 => 2.0,
+                        4 => 1.5,
+                        5 => 1.25,
+                        else => 1.0,
+                    };
+                    const scaled_h: usize = @intFromFloat(@as(f32, @floatFromInt(ch)) * scale);
+                    const item_h = scaled_h + 6;
+                    const hcol = heading_color(lvl);
+
+                    if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                        const draw_y = virtual_y -| scroll;
+                        if (heading_text.len > 0)
+                            rendering.draw_text_scaled(margin_x, draw_y + y_cursor, heading_text, hcol, scale);
+                        // Underlines: h1/h2 full-width section dividers, h3/h4 thin
+                        if (lvl <= 2) {
+                            const uy = draw_y + y_cursor + scaled_h;
+                            const uthick: usize = if (lvl == 1) 3 else 2;
+                            rendering.draw_rect(margin_x, uy, fb_w -| margin_x * 2, uthick, hcol);
+                        } else if (lvl <= 4) {
+                            const uw: usize = @intFromFloat(@as(f32, @floatFromInt(heading_text.len * cw)) * scale);
+                            const uy = draw_y + y_cursor + scaled_h;
+                            rendering.draw_rect(margin_x, uy, @min(uw, fb_w -| margin_x * 2), 1, hcol);
+                        }
+                    }
+                    virtual_y += item_h;
+                    continue;
+                }
+            }
+
+            // Blockquote
+            if (trimmed[0] == '>') {
+                const bq_text = if (trimmed.len > 1 and trimmed[1] == ' ') trimmed[2..] else trimmed[1..];
+                const item_h = ch + 4;
+                if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                    const draw_y = virtual_y -| scroll;
+                    // Vertical bar
+                    rendering.draw_rect(margin_x, draw_y + y_cursor, 3, ch, md_blockquote);
+                    // Background
+                    rendering.draw_rect(margin_x + 6, draw_y + y_cursor, fb_w -| margin_x * 2 -| 6, ch, 0x1a1a2e);
+                    if (bq_text.len > 0)
+                        md_render_inline(margin_x + 10, draw_y + y_cursor, bq_text);
+                }
+                virtual_y += item_h;
+                continue;
+            }
+
+            // List item
+            if ((trimmed[0] == '-' or trimmed[0] == '*' or trimmed[0] == '+') and
+                trimmed.len > 1 and trimmed[1] == ' ')
+            {
+                const item_h = ch + 2;
+                if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                    const draw_y = virtual_y -| scroll;
+                    const bullet_x = margin_x + indent * cw;
+                    rendering.draw_rect(bullet_x + 1, draw_y + y_cursor + ch / 2 - 2, 4, 4, md_list);
+                    md_render_inline(bullet_x + cw * 2, draw_y + y_cursor, trimmed[2..]);
+                }
+                virtual_y += item_h;
+                continue;
+            }
+
+            // Numbered list
+            if (trimmed[0] >= '0' and trimmed[0] <= '9') {
+                var np: usize = 0;
+                while (np < trimmed.len and trimmed[np] >= '0' and trimmed[np] <= '9') np += 1;
+                if (np < trimmed.len and trimmed[np] == '.' and np + 1 < trimmed.len and trimmed[np + 1] == ' ') {
+                    const item_h = ch + 2;
+                    if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                        const draw_y = virtual_y -| scroll;
+                        const num_x = margin_x + indent * cw;
+                        rendering.draw_text(num_x, draw_y + y_cursor, trimmed[0 .. np + 1], md_list);
+                        md_render_inline(num_x + (np + 2) * cw, draw_y + y_cursor, trimmed[np + 2 ..]);
+                    }
+                    virtual_y += item_h;
+                    continue;
+                }
+            }
+
+            // Normal paragraph text
+            const item_h = ch + 2;
+            if (virtual_y >= scroll and virtual_y < scroll + fb_h) {
+                const draw_y = virtual_y -| scroll;
+                md_render_inline(margin_x, draw_y + y_cursor, line);
+            }
+            virtual_y += item_h;
+        }
+
+        // Bottom bar
+        const bot_y = fb_h -| ch;
+        rendering.draw_rect(0, bot_y, fb_w, ch, 0x222244);
+        rendering.draw_text(cw, bot_y, "-- PREVIEW --  j/k scroll  Space page  q/Esc exit", @intFromEnum(C.Grey));
+
+        rendering.swap();
+    }
+
+    fn heading_color(level: usize) u32 {
+        return switch (level) {
+            1 => md_h1,
+            2 => md_h2,
+            3 => md_h3,
+            4 => md_h4,
+            5 => md_h5,
+            else => md_h6,
+        };
+    }
+
+    /// Render a line of markdown inline text with bold/italic/code/link formatting.
+    /// For col(r,g,b):< text > in preview, the markup is stripped and only the
+    /// inner text is shown in the specified color.
+    fn md_render_inline(x: usize, y: usize, text: []const u8) void {
+        // First pass: build a stripped buffer + color array that removes col() markup
+        var stripped: [max_line_len]u8 = undefined;
+        var colors: [max_line_len]u32 = undefined;
+        var slen: usize = 0;
+
+        var i: usize = 0;
+        while (i < text.len) {
+            // col(r,g,b):< text >  — strip markup, keep inner text with color
+            if (i + 4 < text.len and text[i] == 'c' and text[i + 1] == 'o' and text[i + 2] == 'l' and text[i + 3] == '(') {
+                if (parse_col_span(text, i)) |span| {
+                    // Copy only the content portion with the parsed color
+                    for (span.content_start..span.content_end) |j| {
+                        if (slen < max_line_len) {
+                            stripped[slen] = text[j];
+                            colors[slen] = span.color;
+                            slen += 1;
+                        }
+                    }
+                    i = span.end;
+                    continue;
+                }
+            }
+            // Copy normal char
+            if (slen < max_line_len) {
+                stripped[slen] = text[i];
+                colors[slen] = md_normal;
+                slen += 1;
+            }
+            i += 1;
+        }
+
+        // Second pass: apply standard inline formatting to the stripped buffer
+        i = 0;
+        while (i < slen) {
+            // Inline code
+            if (stripped[i] == '`') {
+                const start = i;
+                i += 1;
+                while (i < slen and stripped[i] != '`') i += 1;
+                if (i < slen) {
+                    i += 1;
+                    for (start..i) |j| colors[j] = md_code;
+                    continue;
+                }
+                i = start + 1;
+                continue;
+            }
+            // Bold
+            if (i + 1 < slen and ((stripped[i] == '*' and stripped[i + 1] == '*') or (stripped[i] == '_' and stripped[i + 1] == '_'))) {
+                const marker = stripped[i];
+                const start = i;
+                i += 2;
+                while (i + 1 < slen) {
+                    if (stripped[i] == marker and stripped[i + 1] == marker) {
+                        i += 2;
+                        for (start..i) |j| colors[j] = md_bold;
+                        break;
+                    }
+                    i += 1;
+                }
+                if (i > start + 2) continue;
+                i = start + 1;
+                continue;
+            }
+            // Italic
+            if (stripped[i] == '*' or stripped[i] == '_') {
+                const marker = stripped[i];
+                const start = i;
+                i += 1;
+                while (i < slen and stripped[i] != marker) i += 1;
+                if (i < slen) {
+                    i += 1;
+                    for (start..i) |j| colors[j] = md_italic;
+                    continue;
+                }
+                i = start + 1;
+                continue;
+            }
+            // Links
+            if (stripped[i] == '[' or (stripped[i] == '!' and i + 1 < slen and stripped[i + 1] == '[')) {
+                const start = i;
+                if (stripped[i] == '!') i += 1;
+                i += 1;
+                while (i < slen and stripped[i] != ']') i += 1;
+                if (i < slen) {
+                    i += 1;
+                    if (i < slen and stripped[i] == '(') {
+                        i += 1;
+                        while (i < slen and stripped[i] != ')') i += 1;
+                        if (i < slen) {
+                            i += 1;
+                            for (start..i) |j| colors[j] = md_link;
+                            continue;
+                        }
+                    }
+                }
+                i = start + 1;
+                continue;
+            }
+            i += 1;
+        }
+
+        if (slen > 0)
+            rendering.draw_text_colored(x, y, stripped[0..slen], colors[0..slen]);
+    }
+
+    // ═════════════════════════════════════════════════════════════════
     // Small helpers
     // ═════════════════════════════════════════════════════════════════
 
@@ -1157,4 +1506,258 @@ pub const Editor = struct {
         if (self.cx < self.scroll_x) self.scroll_x = self.cx;
         if (self.cx >= self.scroll_x + tc) self.scroll_x = self.cx - tc + 1;
     }
+
+    // ═════════════════════════════════════════════════════════════════
+    // Markdown syntax highlighting
+    // ═════════════════════════════════════════════════════════════════
+
+    const md_h1         = 0xFFAA33; // orange
+    const md_h2         = @intFromEnum(C.BrightYellow);
+    const md_h3         = @intFromEnum(C.BrightGreen);
+    const md_h4         = @intFromEnum(C.BrightBlue);
+    const md_h5         = @intFromEnum(C.BrightMagenta);
+    const md_h6         = @intFromEnum(C.Grey);
+    const md_heading    = @intFromEnum(C.BrightYellow);
+    const md_bold       = @intFromEnum(C.BrightRed);
+    const md_italic     = @intFromEnum(C.BrightMagenta);
+    const md_code       = @intFromEnum(C.BrightGreen);
+    const md_link       = @intFromEnum(C.BrightBlue);
+    const md_list       = @intFromEnum(C.BrightYellow);
+    const md_blockquote = @intFromEnum(C.BrightBlue);
+    const md_hr         = @intFromEnum(C.Grey);
+    const md_normal     = @intFromEnum(C.White);
+
+    fn md_highlight_line(line: []const u8, colors: []u32) void {
+        const len = line.len;
+        // Default to normal
+        for (0..len) |i| colors[i] = md_normal;
+        if (len == 0) return;
+
+        // Skip leading spaces
+        var start: usize = 0;
+        while (start < len and line[start] == ' ') start += 1;
+        if (start >= len) return;
+
+        // Headings: lines starting with # (up to 6)
+        if (line[start] == '#') {
+            var lvl: usize = 0;
+            var p = start;
+            while (p < len and line[p] == '#' and lvl < 6) { lvl += 1; p += 1; }
+            if (p >= len or line[p] == ' ') {
+                const hcol = heading_color(lvl);
+                for (0..len) |i| colors[i] = hcol;
+                return;
+            }
+        }
+
+        // Horizontal rule: --- or *** or ___ (3+ same char, optional spaces)
+        if (line[start] == '-' or line[start] == '*' or line[start] == '_') {
+            const rule_char = line[start];
+            var count: usize = 0;
+            var all_rule = true;
+            for (start..len) |i| {
+                if (line[i] == rule_char) { count += 1; }
+                else if (line[i] != ' ') { all_rule = false; break; }
+            }
+            if (all_rule and count >= 3) {
+                for (0..len) |i| colors[i] = md_hr;
+                return;
+            }
+        }
+
+        // Blockquote: lines starting with >
+        if (line[start] == '>') {
+            for (0..len) |i| colors[i] = md_blockquote;
+            return;
+        }
+
+        // List items: lines starting with - , * , + , or digit.
+        if (line[start] == '-' or line[start] == '*' or line[start] == '+') {
+            if (start + 1 < len and line[start + 1] == ' ') {
+                colors[start] = md_list;
+                // Continue to inline highlighting for the rest
+                md_highlight_inline(line, colors, start + 2);
+                return;
+            }
+        }
+        // Numbered list: digit(s) followed by . and space
+        if (line[start] >= '0' and line[start] <= '9') {
+            var p = start;
+            while (p < len and line[p] >= '0' and line[p] <= '9') p += 1;
+            if (p < len and line[p] == '.' and p + 1 < len and line[p + 1] == ' ') {
+                for (start..p + 1) |i| colors[i] = md_list;
+                md_highlight_inline(line, colors, p + 2);
+                return;
+            }
+        }
+
+        // Code fence: ``` at start
+        if (len >= start + 3 and line[start] == '`' and line[start + 1] == '`' and line[start + 2] == '`') {
+            for (0..len) |i| colors[i] = md_code;
+            return;
+        }
+
+        // Default: apply inline highlighting
+        md_highlight_inline(line, colors, start);
+    }
+
+    fn md_highlight_inline(line: []const u8, colors: []u32, from: usize) void {
+        const len = line.len;
+        var i = from;
+        while (i < len) {
+            // Truecolor: col(r,g,b):< text >
+            if (i + 4 < len and line[i] == 'c' and line[i + 1] == 'o' and line[i + 2] == 'l' and line[i + 3] == '(') {
+                if (parse_col_span(line, i)) |span| {
+                    // Color the markup chars as grey, content as the parsed color
+                    for (i..span.content_start) |j| colors[j] = @intFromEnum(C.DarkGrey);
+                    for (span.content_start..span.content_end) |j| colors[j] = span.color;
+                    // Closing " >"
+                    for (span.content_end..span.end) |j| colors[j] = @intFromEnum(C.DarkGrey);
+                    i = span.end;
+                    continue;
+                }
+            }
+
+            // Inline code: `...`
+            if (line[i] == '`') {
+                const code_start = i;
+                i += 1;
+                while (i < len and line[i] != '`') i += 1;
+                if (i < len) {
+                    i += 1; // closing `
+                    for (code_start..i) |j| colors[j] = md_code;
+                    continue;
+                }
+                i = code_start + 1;
+                continue;
+            }
+
+            // Bold: **...**  or __...__
+            if (i + 1 < len and ((line[i] == '*' and line[i + 1] == '*') or (line[i] == '_' and line[i + 1] == '_'))) {
+                const marker = line[i];
+                const bold_start = i;
+                i += 2;
+                while (i + 1 < len) {
+                    if (line[i] == marker and line[i + 1] == marker) {
+                        i += 2;
+                        for (bold_start..i) |j| colors[j] = md_bold;
+                        break;
+                    }
+                    i += 1;
+                }
+                if (i > bold_start + 2) continue;
+                i = bold_start + 1;
+                continue;
+            }
+
+            // Italic: *...* or _..._  (single marker, not at word boundary for _)
+            if (line[i] == '*' or line[i] == '_') {
+                const marker = line[i];
+                const it_start = i;
+                i += 1;
+                while (i < len and line[i] != marker) i += 1;
+                if (i < len) {
+                    i += 1;
+                    for (it_start..i) |j| colors[j] = md_italic;
+                    continue;
+                }
+                i = it_start + 1;
+                continue;
+            }
+
+            // Links: [text](url) or images: ![alt](url)
+            if (line[i] == '[' or (line[i] == '!' and i + 1 < len and line[i + 1] == '[')) {
+                const link_start = i;
+                if (line[i] == '!') i += 1;
+                i += 1; // skip [
+                // Find ]
+                while (i < len and line[i] != ']') i += 1;
+                if (i < len) {
+                    i += 1; // skip ]
+                    if (i < len and line[i] == '(') {
+                        i += 1;
+                        while (i < len and line[i] != ')') i += 1;
+                        if (i < len) {
+                            i += 1;
+                            for (link_start..i) |j| colors[j] = md_link;
+                            continue;
+                        }
+                    }
+                }
+                i = link_start + 1;
+                continue;
+            }
+
+            i += 1;
+        }
+    }
+
+    const ColSpan = struct {
+        color: u32,
+        content_start: usize, // index of first char after ":< "
+        content_end: usize, // index of ' ' before '>'
+        end: usize, // index past '>'
+    };
+
+    /// Parse "col(r,g,b):< text >" starting at `start`.
+    /// Returns span info or null if the syntax doesn't match.
+    fn parse_col_span(line: []const u8, start: usize) ?ColSpan {
+        const len = line.len;
+        // Expect "col("
+        var i = start + 4; // skip "col("
+        // Parse r
+        const r = parse_u8_at(line, &i) orelse return null;
+        if (i >= len or line[i] != ',') return null;
+        i += 1;
+        // Parse g
+        const g = parse_u8_at(line, &i) orelse return null;
+        if (i >= len or line[i] != ',') return null;
+        i += 1;
+        // Parse b
+        const b = parse_u8_at(line, &i) orelse return null;
+        if (i >= len or line[i] != ')') return null;
+        i += 1;
+        // Expect ":< "
+        if (i + 2 >= len or line[i] != ':' or line[i + 1] != '<' or line[i + 2] != ' ') return null;
+        i += 3;
+        const content_start = i;
+        // Find closing " >"
+        while (i + 1 < len) {
+            if (line[i] == ' ' and line[i + 1] == '>') {
+                const color = (@as(u32, r) << 16) | (@as(u32, g) << 8) | @as(u32, b);
+                return .{
+                    .color = color,
+                    .content_start = content_start,
+                    .content_end = i,
+                    .end = i + 2,
+                };
+            }
+            i += 1;
+        }
+        return null;
+    }
+
+    fn parse_u8_at(line: []const u8, pos: *usize) ?u8 {
+        var i = pos.*;
+        if (i >= line.len or line[i] < '0' or line[i] > '9') return null;
+        var val: u16 = 0;
+        while (i < line.len and line[i] >= '0' and line[i] <= '9') {
+            val = val * 10 + (line[i] - '0');
+            if (val > 255) return null;
+            i += 1;
+        }
+        pos.* = i;
+        return @truncate(val);
+    }
 };
+
+fn ends_with_ci(s: []const u8, suffix: []const u8) bool {
+    if (s.len < suffix.len) return false;
+    const tail = s[s.len - suffix.len ..];
+    for (tail, suffix) |a, b| {
+        const la = if (a >= 'A' and a <= 'Z') a + 32 else a;
+        const lb = if (b >= 'A' and b <= 'Z') b + 32 else b;
+        if (la != lb) return false;
+    }
+    return true;
+}
