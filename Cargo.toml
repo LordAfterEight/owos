@@ -1,0 +1,15 @@
+[package]
+name = "owos"
+version = "0.1.0"
+edition = "2024"
+ 
+# Source files live at the repo root rather than src/,
+# so both targets need explicit paths.
+[[bin]]
+name = "owos"
+path = "main.rs"
+ 
+[lib]
+name = "owos"
+path = "lib.rs"
+ 

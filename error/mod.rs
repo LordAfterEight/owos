@@ -1,2 +1,2 @@
-pub mod error
-pub use error::AllocationError
+pub mod error;
+pub use error::AllocationError;

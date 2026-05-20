@@ -22,9 +22,9 @@ struct Person {
     age: u8
 }
 
-fn main() -> Result<(), AllocationError> {
+fn main() -> Result<(), crate::error::AllocationError> {
     let mut mem = Mem::init();
-    let mut alloc = owos::mem::BumpAllocator::init(&mut mem);
+    let mut alloc = crate::mem::BumpAllocator::init(&mut mem);
     
     let mut point = alloc.alloc(Point {x: 10, y: 20})?;
     let person = alloc.alloc(Person {name: "Elias".into(), age: 18})?;

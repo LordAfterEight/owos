@@ -10,14 +10,14 @@ impl<'a> BumpAllocator<'a> {
             ptr: 0,
         }
     }
-    pub fn alloc<T>(&mut self, val: T) -> Result<owos::mem::Ptr<'a, T>, owos::error::AllocationError> {
+    pub fn alloc<T>(&mut self, val: T) -> Result<crate::mem::Ptr<'a, T>, crate::error::AllocationError> {
         let align = std::mem::align_of::<T>();
         let size  = std::mem::size_of::<T>();
 
         let offset = (self.ptr + align - 1) & !(align - 1);
 
         if offset + size > self.data.0.len() {
-            return Err(owos::error::AllocationError::OOM);
+            return Err(crate::error::AllocationError::OOM);
         }
 
         let ptr = unsafe {
@@ -27,6 +27,6 @@ impl<'a> BumpAllocator<'a> {
         };
 
         self.ptr = offset + size;
-        Ok(owos::mem::Ptr { ptr: ptr, phantom: core::marker::PhantomData })
+        Ok(crate::mem::Ptr { ptr: ptr, phantom: crate::marker::PhantomData })
     }
 }
