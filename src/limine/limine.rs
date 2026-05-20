@@ -35,6 +35,52 @@ pub const fn entry_point_request(entry: extern "C" fn() -> !) -> EntryPointReque
     }
 }
 
+// --- Framebuffer ---
+#[repr(C)]
+pub struct Framebuffer {
+    pub base: *mut u8,
+    pub width: u64,
+    pub height: u64,
+    pub pitch: u64,
+    pub bpp: u16,
+    pub memory_model: u8,
+    pub red_mask_size: u8,
+    pub red_mask_shift: u8,
+    pub green_mask_size: u8,
+    pub green_mask_shift: u8,
+    pub blue_mask_size: u8,
+    pub blue_mask_shift: u8,
+}
+
+#[repr(C)]
+pub struct FramebufferResponse {
+    pub revision: u64,
+    pub framebuffer_count: u64,
+    pub framebuffers: *mut *mut Framebuffer,
+}
+
+#[repr(C)]
+pub struct FramebufferRequest {
+    id: [u64; 4],
+    revision: u64,
+    pub response: *mut FramebufferResponse,
+}
+
+unsafe impl Sync for FramebufferRequest {}
+
+pub const fn framebuffer_request() -> FramebufferRequest {
+    FramebufferRequest {
+        id: [
+            LIMINE_COMMON_MAGIC[0],
+            LIMINE_COMMON_MAGIC[1],
+            0x9d5827dcd881dd75,
+            0xa3148604f6fab11b,
+        ],
+        revision: 0,
+        response: core::ptr::null_mut(),
+    }
+}
+
 // --- Section markers ---
 #[used]
 #[unsafe(link_section = ".limine_requests_start")]
