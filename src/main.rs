@@ -15,14 +15,16 @@ impl Mem {
 #[unsafe(link_section = ".limine_requests")]
 static ENTRY_POINT: owos::limine::limine::EntryPointRequest = owos::limine::limine::entry_point_request(start);
 
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+static FRAMEBUFFER_REQUEST: owos::limine::limine::FramebufferRequest = owos::limine::limine::framebuffer_request();
+
 #[unsafe(no_mangle)]
 extern "C" fn start() -> ! {
     let mut mem = Mem::init();
     let mut alloc = owos::mem::BumpAllocator::init(&mut mem.0);
 
     owos::println!("Hello, world!");
-    panic!("This is a test panic.");
-
     loop {}
 }
 
