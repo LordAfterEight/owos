@@ -20,12 +20,14 @@ extern "C" fn start() -> ! {
     let mut mem = Mem::init();
     let mut alloc = owos::mem::BumpAllocator::init(&mut mem.0);
 
-    owos::drivers::serial::println("Hello, world!");
+    owos::println!("Hello, world!");
+    panic!("This is a test panic.");
 
     loop {}
 }
 
 #[panic_handler]
 fn panic<'a, 'b>(info: &'a core::panic::PanicInfo<'b>) -> ! {
+    owos::println!("Panic: {:?}", info);
     loop {}
 }
