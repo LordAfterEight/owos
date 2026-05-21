@@ -1,6 +1,8 @@
 use core::prelude::rust_2024::derive;
 
-#[derive(core::fmt::Debug)]
+#[derive(core::fmt::Debug, core::clone::Clone, Copy)]
+
+/// A string of bytes with a known const size
 pub struct String<const N: usize>([u8; N]);
 
 impl<const N: usize> String<N> {
@@ -17,6 +19,17 @@ impl<const N: usize> String<N> {
             counter += 1;
         }
         Self(buf)
+    }
+
+    pub fn as_str(&self) -> &str {
+        let mut len = 0;
+        for idx in 0..N {
+            if self.0[idx] == 0 {
+                break;
+            }
+            len += 1;
+        }
+        core::str::from_utf8(&self.0[0..len]).expect("Invalid UTF-8")
     }
 }
 

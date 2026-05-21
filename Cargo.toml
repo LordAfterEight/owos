@@ -12,3 +12,6 @@ path = "src/main.rs"
 [lib]
 name = "owos"
 path = "src/lib.rs"
+
+[dependencies]
+chacha20poly1305-nostd = "0.1.0"

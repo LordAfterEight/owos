@@ -23,6 +23,14 @@ static FRAMEBUFFER_REQUEST: owos::limine::limine::FramebufferRequest = owos::lim
 extern "C" fn start() -> ! {
     let mut mem = Mem::init();
     let mut alloc = owos::mem::BumpAllocator::init(&mut mem.0);
+    let key = [0u8; 32];
+    let stream = chacha20poly1305_nostd::ChaCha20Poly1305::new(&key).expect("Failed to create stream");
+
+    let text = owos::alloc::String::<11>::create("Hello World");
+
+    let nonce = [0u8; 12];
+
+    let ciphertext = stream.encrypt(&nonce, text.as_str().as_bytes(), None);
 
     owos::println!("Hello, world!");
     loop {}
