@@ -38,7 +38,7 @@ extern "C" fn start() -> ! {
     let person = alloc.alloc(Person {name: "Elias".into(), age: 18}).unwrap();
     point.x = 90;
 
-    owos::drivers::serial::outb(owos::drivers::serial::COM1, b'H');
+    owos::drivers::serial::println("Hello, world!\n");
 
     loop {}
 }
