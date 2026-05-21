@@ -20,8 +20,8 @@ struct Point {
 
 #[allow(unused)]
 #[derive(Default, Debug)]
-struct Person {
-    name: owos::alloc::String,
+struct Person<const N: usize> {
+    name: owos::alloc::String<N>,
     age: u8
 }
 
@@ -35,7 +35,7 @@ extern "C" fn start() -> ! {
     let mut alloc = owos::mem::BumpAllocator::init(&mut mem.0);
 
     let mut point = alloc.alloc(Point {x: 10, y: 20}).unwrap();
-    let person = alloc.alloc(Person {name: "Elias".into(), age: 18}).unwrap();
+    let person = alloc.alloc(Person {name: owos::alloc::String::<5>::create("Elias"), age: 18}).unwrap();
     point.x = 90;
 
     owos::drivers::serial::println("Hello, world!\n");
