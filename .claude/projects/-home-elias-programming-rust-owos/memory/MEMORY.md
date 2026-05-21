@@ -1,1 +1,0 @@
-- [Don't assume broken](feedback_dont_assume_broken.md) — Only change what's explicitly asked; don't "fix" working setups
