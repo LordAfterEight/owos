@@ -1,38 +1,51 @@
-pub struct BumpAllocator<'a> {
-    data: &'a mut [u8],
-    ptr: usize,
+#[global_allocator]
+pub static ALLOCATOR: BumpAllocator = BumpAllocator::uninit();
+
+
+pub struct BumpAllocator {
+    data: core::cell::UnsafeCell<*mut u8>,
+    len:  core::cell::UnsafeCell<usize>,
+    ptr:  core::cell::UnsafeCell<usize>,
 }
 
-impl<'a> BumpAllocator<'a> {
-    pub fn init(reference: &'a mut [u8]) -> Self {
+unsafe impl Sync for BumpAllocator {}
+
+impl BumpAllocator {
+    pub const fn uninit() -> Self {
         Self {
-            data: reference,
-            ptr: 0,
+            data: core::cell::UnsafeCell::new(core::ptr::null_mut()),
+            len:  core::cell::UnsafeCell::new(0),
+            ptr:  core::cell::UnsafeCell::new(0),
         }
     }
-    pub fn alloc<T>(
-        &mut self,
-        val: T,
-    ) -> core::result::Result<crate::mem::Ptr<'a, T>, crate::error::AllocationError> {
-        let align = core::mem::align_of::<T>();
-        let size = core::mem::size_of::<T>();
 
-        let offset = (self.ptr + align - 1) & !(align - 1);
-
-        if offset + size > self.data.len() {
-            return core::result::Result::Err(crate::error::AllocationError::OOM);
+    /// Call this once at runtime to point the allocator at your heap region.
+    pub unsafe fn init(&self, base: *mut u8, len: usize) {
+        unsafe {
+            *self.data.get() = base;
+            *self.len.get()  = len;
+            *self.ptr.get()  = 0;
         }
-
-        let ptr = unsafe {
-            let raw = self.data.as_mut_ptr().add(offset) as *mut T;
-            core::ptr::write(raw, val);
-            raw
-        };
-
-        self.ptr = offset + size;
-        core::result::Result::Ok(crate::mem::Ptr {
-            ptr: ptr,
-            phantom: core::marker::PhantomData,
-        })
     }
+}
+
+unsafe impl core::alloc::GlobalAlloc for BumpAllocator {
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        unsafe {
+            let ptr  = &mut *self.ptr.get();
+            let base = *self.data.get();
+            let len  = *self.len.get();
+
+            let offset = (*ptr + layout.align() - 1) & !(layout.align() - 1);
+
+            if offset + layout.size() > len {
+                return core::ptr::null_mut();
+            }
+
+            *ptr = offset + layout.size();
+            base.add(offset)
+        }
+    }
+
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: core::alloc::Layout) {}
 }

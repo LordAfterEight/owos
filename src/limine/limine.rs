@@ -81,6 +81,55 @@ pub const fn framebuffer_request() -> FramebufferRequest {
     }
 }
 
+#[repr(C)]
+pub struct MemoryMapEntry {
+    pub base: u64,
+    pub length: u64,
+    pub typ: u32,
+    pub reserved: u32,
+}
+
+#[repr(C)]
+pub struct MemoryMapResponse {
+    pub revision: u64,
+    pub entry_count: u64,
+    pub entries: *mut *mut MemoryMapEntry,
+}
+
+impl MemoryMapResponse {
+    pub fn entries(&self) -> &[*mut MemoryMapEntry] {
+        unsafe { core::slice::from_raw_parts(self.entries, self.entry_count as usize) }
+    }
+}
+
+#[repr(C)]
+pub struct MemoryMapRequest {
+    id: [u64; 4],
+    revision: u64,
+    pub response: *mut MemoryMapResponse,
+}
+
+impl MemoryMapRequest {
+    pub fn get_response(&self) -> Option<&MemoryMapResponse> {
+        unsafe { self.response.as_ref() }
+    }
+}
+
+unsafe impl Sync for MemoryMapRequest {}
+
+pub const fn memmap_request() -> MemoryMapRequest {
+    MemoryMapRequest {
+        id: [
+            LIMINE_COMMON_MAGIC[0],
+            LIMINE_COMMON_MAGIC[1],
+            0x67cf3d9d378a806f,
+            0xe304acdfc50c3c62,
+        ],
+        revision: 0,
+        response: core::ptr::null_mut(),
+    }
+}
+
 // --- Section markers ---
 #[used]
 #[unsafe(link_section = ".limine_requests_start")]

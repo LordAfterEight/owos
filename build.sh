@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Cleanup
+cargo clean
+rm -rf iso_root owos.iso
+
 # Build kernel
 cargo build --release
 
@@ -24,8 +28,10 @@ cp limine/BOOTX64.EFI iso_root/EFI/BOOT/
 # Write Limine config
 cat > iso_root/boot/limine/limine.conf << 'EOF'
 timeout: 0
+interface_resolution: 1920x1080
 
 /owos
+    resolution: 1920x1080
     protocol: limine
     kernel_path: boot():/boot/owos
 EOF
