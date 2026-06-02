@@ -16,6 +16,11 @@ static MEMMAP_REQUEST: owos::limine::MemoryMapRequest = owos::limine::memmap_req
 #[unsafe(no_mangle)]
 extern "C" fn start() -> ! {
     owos::println!("Booting...");
+
+    if FRAMEBUFFER_REQUEST.response.is_null() {
+        owos::println!("No framebuffer response");
+    }
+
     let mmap = MEMMAP_REQUEST.get_response().expect("Failed to get memory map response");
     owos::println!("Entries: {}", mmap.entry_count);
 

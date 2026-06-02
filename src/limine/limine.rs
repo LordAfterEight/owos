@@ -2,7 +2,7 @@ const LIMINE_COMMON_MAGIC: [u64; 2] = [0xc7b1dd30df4c8b88, 0x0a82e883a194f07b];
 
 // --- Base revision ---
 #[used]
-#[unsafe(link_section = ".limine_requests")]
+#[unsafe(link_section = ".limine_base_revision")]
 static BASE_REVISION: [u64; 3] = [0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 3];
 
 // --- Entry Point ---
@@ -132,9 +132,9 @@ pub const fn memmap_request() -> MemoryMapRequest {
 
 // --- Section markers ---
 #[used]
-#[unsafe(link_section = ".limine_requests_start")]
-static _START: [u8; 0] = [];
+#[unsafe(link_section = ".limine_requests_start_marker")]
+static _START: [u64; 1] = [0];
 
 #[used]
-#[unsafe(link_section = ".limine_requests_end")]
-static _END: [u8; 0] = [];
+#[unsafe(link_section = ".limine_requests_end_marker")]
+static _END: [u64; 1] = [0];
