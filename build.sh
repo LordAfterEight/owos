@@ -46,4 +46,4 @@ xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
 # Install Limine BIOS stages
 ./limine/limine bios-install owos.iso
 
-echo "Done! Run with: qemu-system-x86_64 -cdrom owos.iso -serial stdio"
+echo "Done! Run with: qemu-system-x86_64 -cdrom owos.iso -serial stdio -m 8G"

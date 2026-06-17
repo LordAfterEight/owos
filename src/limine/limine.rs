@@ -15,7 +15,7 @@ pub struct EntryPointResponse {
 pub struct EntryPointRequest {
     id: [u64; 4],
     revision: u64,
-    response: *mut EntryPointResponse,
+    response: core::cell::UnsafeCell<*mut EntryPointResponse>,
     entry: extern "C" fn() -> !,
 }
 
@@ -30,7 +30,7 @@ pub const fn entry_point_request(entry: extern "C" fn() -> !) -> EntryPointReque
             0x2b0caa89d8f3026a,
         ],
         revision: 0,
-        response: core::ptr::null_mut(),
+        response: core::cell::UnsafeCell::new(core::ptr::null_mut()),
         entry,
     }
 }
@@ -63,7 +63,7 @@ pub struct FramebufferResponse {
 pub struct FramebufferRequest {
     id: [u64; 4],
     revision: u64,
-    pub response: *mut FramebufferResponse,
+    pub response: core::cell::UnsafeCell<*mut FramebufferResponse>,
 }
 
 unsafe impl Sync for FramebufferRequest {}
@@ -77,7 +77,7 @@ pub const fn framebuffer_request() -> FramebufferRequest {
             0xa3148604f6fab11b,
         ],
         revision: 0,
-        response: core::ptr::null_mut(),
+        response: core::cell::UnsafeCell::new(core::ptr::null_mut()),
     }
 }
 
@@ -106,12 +106,12 @@ impl MemoryMapResponse {
 pub struct MemoryMapRequest {
     id: [u64; 4],
     revision: u64,
-    pub response: *mut MemoryMapResponse,
+    pub response: core::cell::UnsafeCell<*mut MemoryMapResponse>,
 }
 
 impl MemoryMapRequest {
     pub fn get_response(&self) -> Option<&MemoryMapResponse> {
-        unsafe { self.response.as_ref() }
+        unsafe { (*self.response.get()).as_ref() }
     }
 }
 
@@ -126,15 +126,73 @@ pub const fn memmap_request() -> MemoryMapRequest {
             0xe304acdfc50c3c62,
         ],
         revision: 0,
-        response: core::ptr::null_mut(),
+        response: core::cell::UnsafeCell::new(core::ptr::null_mut()),
+    }
+}
+
+#[repr(C)]
+pub struct StackSizeRequest {
+    id: [u64; 4],
+    revision: u64,
+    response: core::cell::UnsafeCell<*mut ()>,
+    pub stack_size: u64,
+}
+
+unsafe impl Sync for StackSizeRequest {}
+
+pub const fn stack_size_request(size: u64) -> StackSizeRequest {
+    StackSizeRequest {
+        id: [
+            LIMINE_COMMON_MAGIC[0],
+            LIMINE_COMMON_MAGIC[1],
+            0x224ef0460a8e8926,
+            0xe1cb0fc25f46ea3d,
+        ],
+        revision: 0,
+        response: core::cell::UnsafeCell::new(core::ptr::null_mut()),
+        stack_size: size
+    }
+}
+
+#[repr(C)]
+pub struct HhdmResponse {
+    pub revision: u64,
+    pub offset: u64,
+}
+
+#[repr(C)]
+pub struct HhdmRequest {
+    id: [u64; 4],
+    revision: u64,
+    response: core::cell::UnsafeCell<*mut HhdmResponse>,
+}
+
+impl HhdmRequest {
+    pub fn get_response(&self) -> Option<&HhdmResponse> {
+        unsafe { (*self.response.get()).as_ref() }
+    }
+}
+
+unsafe impl Sync for HhdmRequest {}
+
+pub const fn hhdm_request() -> HhdmRequest {
+    HhdmRequest {
+        id: [
+            LIMINE_COMMON_MAGIC[0],
+            LIMINE_COMMON_MAGIC[1],
+            0x48dcf1cb8ad2b852,
+            0x63984e959a98244b,
+        ],
+        revision: 0,
+        response: core::cell::UnsafeCell::new(core::ptr::null_mut()),
     }
 }
 
 // --- Section markers ---
 #[used]
 #[unsafe(link_section = ".limine_requests_start_marker")]
-static _START: [u64; 1] = [0];
+static _START: [u64; 2] = [0xf6b8f4b39de7d1ae, 0xfab91a6940fcb9cf];
 
 #[used]
 #[unsafe(link_section = ".limine_requests_end_marker")]
-static _END: [u64; 1] = [0];
+static _END: [u64; 2] = [0x1d600343e010f811, 0xad97e90e83b1a052];
