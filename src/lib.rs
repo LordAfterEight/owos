@@ -17,3 +17,5 @@ pub mod io;
 
 /// Kernel UI
 pub mod kui;
+
+pub const VERSION_STR: &str = "OwOS v0.1.0";

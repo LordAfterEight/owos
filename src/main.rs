@@ -41,11 +41,11 @@ extern "C" fn start() -> ! {
         .expect("No region found");
     owos::println!("Found region of size {} MiB", region.length as f32 / 1024.0 / 1024.0);
 
+    owos::println!("Initializing GlobalAlloc with {}", type_name_of_val(&owos::mem::ALLOCATOR));
     unsafe {
-        owos::println!("Initializing GlobalAlloc with {}", type_name_of_val(&owos::mem::ALLOCATOR));
         owos::mem::ALLOCATOR.init((hhdm.offset + region.base) as *mut u8, region.length as usize);
-        owos::println!("Success");
     }
+    owos::println!("Success");
 
     owos::println!("Getting Limine framebuffer...");
     let fb_request = FRAMEBUFFER_REQUEST.get_response().expect("Failed to get Framebuffer response");
@@ -55,9 +55,7 @@ extern "C" fn start() -> ! {
     owos::kui::kfont::init();
 
     owos::kui::kbackground(fb);
-    owos::kui::draw_text(10, 20, 50.0, &owos::kui::kfont::UIFONT_LIGHT, "Hello World", fb);
-    owos::kui::draw_text(10, 70, 50.0, &owos::kui::kfont::UIFONT_REGULAR, "Hello World", fb);
-    owos::kui::draw_text(10, 120, 50.0, &owos::kui::kfont::UIFONT_BOLD, "Hello World", fb);
+    owos::kui::draw_text(10, 10, 12.0, &owos::kui::kfont::UIFONT_BOLD, owos::VERSION_STR, fb);
 
     loop { unsafe { core::arch::asm!("cli; hlt;") } }
 }
