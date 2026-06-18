@@ -15,3 +15,6 @@ pub mod limine;
 
 /// I/O port access functions.
 pub mod io;
+
+/// Kernel UI
+pub mod kui;

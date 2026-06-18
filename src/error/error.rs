@@ -4,3 +4,7 @@ use core::prelude::rust_2024::derive;
 pub enum AllocationError {
     OOM,
 }
+
+pub enum Kerror<T> {
+    Other
+}

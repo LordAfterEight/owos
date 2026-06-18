@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+use core::any::{type_name, type_name_of_val};
+
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static ENTRY_POINT: owos::limine::EntryPointRequest = owos::limine::entry_point_request(start);
@@ -15,7 +17,7 @@ static MEMMAP_REQUEST: owos::limine::MemoryMapRequest = owos::limine::memmap_req
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
-static STACK_SIZE: owos::limine::StackSizeRequest = owos::limine::stack_size_request(1024 * 1024);
+static STACK_SIZE: owos::limine::StackSizeRequest = owos::limine::stack_size_request(1024 * 1024 * 4); // 4 MiB of stack
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
@@ -23,41 +25,37 @@ static HHDM_REQUEST: owos::limine::HhdmRequest = owos::limine::hhdm_request();
 
 #[unsafe(no_mangle)]
 extern "C" fn start() -> ! {
-    owos::println!("Booting...");
+    owos::println!("Getting Limine framebuffer...");
+    let fb_request = FRAMEBUFFER_REQUEST.get_response().expect("Failed to get Framebuffer response");
+    let fb_ptrs = unsafe { core::slice::from_raw_parts(fb_request.framebuffers, fb_request.framebuffer_count as usize) };
+    let fb = unsafe {&*fb_ptrs[0] };
+    owos::println!("Success");
 
-    let hhdm = HHDM_REQUEST.get_response().expect("No HHDM Response");
+    owos::kui::kbackground(fb);
 
-    if FRAMEBUFFER_REQUEST.response.get().is_null() {
-        owos::println!("No framebuffer response");
-    }
+    owos::println!("Getting Limine HHDM response...");
+    let hhdm = HHDM_REQUEST.get_response().expect("Failed to get HHDM response");
+    owos::println!("Success");
 
-    let mmap = MEMMAP_REQUEST.get_response().expect("Failed to get memory map response");
-    owos::println!("Entries: {}", mmap.entry_count);
+    owos::println!("Getting Limine MEMMAP response...");
+    let mmap = MEMMAP_REQUEST.get_response().expect("Failed to get MEMMAP response");
+    owos::println!("{} memory map entries found, finding biggest one...", mmap.entry_count);
 
     let region = mmap.entries()
         .iter()
         .filter_map(|e| unsafe { (*e).as_ref() })
         .filter(|e| e.typ == 0)
         .max_by_key(|e| e.length)
-        .expect("no suitable memory region");
+        .expect("No region found");
+    owos::println!("Found region of size {} MiB", region.length as f32 / 1024.0 / 1024.0);
 
     unsafe {
+        owos::println!("Initializing GlobalAlloc with {}", type_name_of_val(&owos::mem::ALLOCATOR));
         owos::mem::ALLOCATOR.init((hhdm.offset + region.base) as *mut u8, region.length as usize);
+        owos::println!("Success");
     }
 
-
-    let key = [0u8; 32];
-    let stream = chacha20poly1305_nostd::ChaCha20Poly1305::new(&key).expect("Failed to create stream");
-
-    let text = owos::alloc::String::<11>::create("Hello World");
-
-    let nonce = [0u8; 12];
-
-    let ciphertext = stream.encrypt(&nonce, text.as_str().as_bytes(), None).unwrap();
-
-
-    owos::println!("Plaintext: {:?}\nEncrypted: {:?}", stream.decrypt(&nonce, &ciphertext, None).unwrap(), ciphertext);
-    loop {}
+    loop { unsafe { core::arch::asm!("cli; hlt;") } }
 }
 
 #[panic_handler]

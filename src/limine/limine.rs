@@ -68,6 +68,12 @@ pub struct FramebufferRequest {
 
 unsafe impl Sync for FramebufferRequest {}
 
+impl FramebufferRequest {
+    pub fn get_response(&self) -> Option<&FramebufferResponse> {
+        unsafe { (*self.response.get()).as_ref() }
+    }
+}
+
 pub const fn framebuffer_request() -> FramebufferRequest {
     FramebufferRequest {
         id: [

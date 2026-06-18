@@ -9,6 +9,7 @@ pub use limine::EntryPointRequest;
 pub use limine::StackSizeRequest;
 pub use limine::HhdmRequest;
 pub use limine::HhdmResponse;
+pub use limine::Framebuffer;
 pub use limine::memmap_request;
 pub use limine::framebuffer_request;
 pub use limine::entry_point_request;
