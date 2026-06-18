@@ -24,12 +24,6 @@ fn draw_glyph(
     }
 }
 
-pub enum TextWeight {
-    Light,
-    Regular,
-    Bold
-}
-
 pub fn draw_text(x: u32, y: u32, size: f32, font: &spin::Once<fontdue::Font>, text: &str, fb: &crate::limine::Framebuffer) {
     let font = font.get().unwrap();
 

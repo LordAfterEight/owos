@@ -23,8 +23,25 @@ static STACK_SIZE: owos::limine::StackSizeRequest = owos::limine::stack_size_req
 #[unsafe(link_section = ".limine_requests")]
 static HHDM_REQUEST: owos::limine::HhdmRequest = owos::limine::hhdm_request();
 
+fn enable_sse() {
+    unsafe {
+        core::arch::asm!(
+            "mov rax, cr0
+            and rax, ~(1 << 2)
+            or  rax, (1 << 1)
+            mov cr0, rax
+
+            mov rax, cr4
+            or  rax, (1 << 9)
+            or  rax, (1 << 10)
+            mov cr4, rax"
+        );
+    }
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn start() -> ! {
+    enable_sse();
     owos::println!("Getting Limine HHDM response...");
     let hhdm = HHDM_REQUEST.get_response().expect("Failed to get HHDM response");
     owos::println!("Success");
@@ -55,7 +72,7 @@ extern "C" fn start() -> ! {
     owos::kui::kfont::init();
 
     owos::kui::kbackground(fb);
-    owos::kui::draw_text(10, 10, 12.0, &owos::kui::kfont::UIFONT_BOLD, owos::VERSION_STR, fb);
+    owos::kui::draw_text(10, 10, 20.0, &owos::kui::kfont::UIFONT_BOLD, owos::VERSION_STR, fb);
 
     loop { unsafe { core::arch::asm!("cli; hlt;") } }
 }
