@@ -17,7 +17,7 @@ static MEMMAP_REQUEST: owos::limine::MemoryMapRequest = owos::limine::memmap_req
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
-static STACK_SIZE: owos::limine::StackSizeRequest = owos::limine::stack_size_request(1024 * 1024 * 4); // 4 MiB of stack
+static STACK_SIZE: owos::limine::StackSizeRequest = owos::limine::stack_size_request(1024 * 1024 * 16); // 16 MiB of stack
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
@@ -25,14 +25,6 @@ static HHDM_REQUEST: owos::limine::HhdmRequest = owos::limine::hhdm_request();
 
 #[unsafe(no_mangle)]
 extern "C" fn start() -> ! {
-    owos::println!("Getting Limine framebuffer...");
-    let fb_request = FRAMEBUFFER_REQUEST.get_response().expect("Failed to get Framebuffer response");
-    let fb_ptrs = unsafe { core::slice::from_raw_parts(fb_request.framebuffers, fb_request.framebuffer_count as usize) };
-    let fb = unsafe {&*fb_ptrs[0] };
-    owos::println!("Success");
-
-    owos::kui::kbackground(fb);
-
     owos::println!("Getting Limine HHDM response...");
     let hhdm = HHDM_REQUEST.get_response().expect("Failed to get HHDM response");
     owos::println!("Success");
@@ -54,6 +46,18 @@ extern "C" fn start() -> ! {
         owos::mem::ALLOCATOR.init((hhdm.offset + region.base) as *mut u8, region.length as usize);
         owos::println!("Success");
     }
+
+    owos::println!("Getting Limine framebuffer...");
+    let fb_request = FRAMEBUFFER_REQUEST.get_response().expect("Failed to get Framebuffer response");
+    let fb_ptrs = unsafe { core::slice::from_raw_parts(fb_request.framebuffers, fb_request.framebuffer_count as usize) };
+    let fb = unsafe {&*fb_ptrs[0] };
+    owos::println!("Success");
+    owos::kui::kfont::init();
+
+    owos::kui::kbackground(fb);
+    owos::kui::draw_text(10, 20, 50.0, &owos::kui::kfont::UIFONT_LIGHT, "Hello World", fb);
+    owos::kui::draw_text(10, 70, 50.0, &owos::kui::kfont::UIFONT_REGULAR, "Hello World", fb);
+    owos::kui::draw_text(10, 120, 50.0, &owos::kui::kfont::UIFONT_BOLD, "Hello World", fb);
 
     loop { unsafe { core::arch::asm!("cli; hlt;") } }
 }

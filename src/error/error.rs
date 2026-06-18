@@ -5,6 +5,6 @@ pub enum AllocationError {
     OOM,
 }
 
-pub enum Kerror<T> {
+pub enum Kerror {
     Other
 }

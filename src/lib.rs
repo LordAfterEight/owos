@@ -1,8 +1,7 @@
 #![no_std]
+extern crate alloc;
 
 pub mod mem;
-
-pub mod alloc;
 
 /// Error types for various operations.
 pub mod error;

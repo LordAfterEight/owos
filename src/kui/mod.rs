@@ -1,5 +1,7 @@
 pub mod kfont;
-pub use kfont::Kfont;
+pub mod kdraw;
+pub use kdraw::draw_text;
+
 
 /// Fills the screen with dark grey horizontal lines
 pub fn kbackground(fb: &crate::limine::Framebuffer) {
