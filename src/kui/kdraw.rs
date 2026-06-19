@@ -1,3 +1,5 @@
+pub static mut GLOBAL_FB: spin::Once<&crate::limine::Framebuffer> = spin::Once::new();
+
 fn draw_glyph(
     fb: *mut u8,
     fb_stride: usize,

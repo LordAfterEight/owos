@@ -1,7 +1,9 @@
 #![no_std]
 #![no_main]
+extern crate alloc;
 
-use core::any::{type_name, type_name_of_val};
+use core::any::type_name_of_val;
+use alloc::string::ToString;
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
@@ -68,11 +70,27 @@ extern "C" fn start() -> ! {
     let fb_request = FRAMEBUFFER_REQUEST.get_response().expect("Failed to get Framebuffer response");
     let fb_ptrs = unsafe { core::slice::from_raw_parts(fb_request.framebuffers, fb_request.framebuffer_count as usize) };
     let fb = unsafe {&*fb_ptrs[0] };
+    #[allow(static_mut_refs)]
+    unsafe { owos::kui::kdraw::GLOBAL_FB.call_once(|| fb); }
     owos::println!("Success");
+
+    owos::println!("Initializing fonts...");
     owos::kui::kfont::init();
+    owos::println!("Done");
 
     owos::kui::kbackground(fb);
     owos::kui::draw_text(10, 10, 20.0, &owos::kui::kfont::UIFONT_BOLD, owos::VERSION_STR, fb);
+
+    let string = "Hello World!".to_string();
+    let mut file = owos::ofs::PlaintextFile::new("TestFile.txt").expect("Failed to create file");
+    file.write_bytes(&string.as_bytes());
+    file.write_serde(&Data::new("Inside File"));
+
+    owos::println!("{:#?}", file);
+    owos::println!("{:?}", alloc::string::String::from_utf8(file.read_bytes(0).unwrap().to_vec()).unwrap());
+    owos::println!("{:?}", file.read_serde::<Data>(1).unwrap());
+    owos::println!("{:?}", alloc::string::String::from_utf8(file.read_bytes(1).unwrap().to_vec()).unwrap());
+    owos::println!("{:?}", file.read_serde::<Data>(0).unwrap());
 
     loop { unsafe { core::arch::asm!("cli; hlt;") } }
 }
@@ -80,5 +98,23 @@ extern "C" fn start() -> ! {
 #[panic_handler]
 fn panic<'a, 'b>(info: &'a core::panic::PanicInfo<'b>) -> ! {
     owos::println!("Panic: {:?}", info);
+    #[allow(static_mut_refs)]
+    {
+        owos::kui::kbackground(unsafe { owos::kui::kdraw::GLOBAL_FB.get().unwrap() });
+        owos::kui::draw_text(20, 20, 30.0, &owos::kui::kfont::UIFONT_BOLD, "PANIC", unsafe { owos::kui::kdraw::GLOBAL_FB.get().unwrap() });
+    }
     loop {}
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct Data {
+    name: alloc::string::String,
+}
+
+impl Data {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string()
+        }
+    }
 }

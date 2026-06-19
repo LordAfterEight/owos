@@ -19,7 +19,6 @@ impl BumpAllocator {
         }
     }
 
-    /// Call this once at runtime to point the allocator at your heap region.
     pub unsafe fn init(&self, base: *mut u8, len: usize) {
         unsafe {
             *self.data.get() = base;

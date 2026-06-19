@@ -18,4 +18,7 @@ pub mod io;
 /// Kernel UI
 pub mod kui;
 
+/// OwOS File System
+pub mod ofs;
+
 pub const VERSION_STR: &str = "OwOS v0.1.0";
