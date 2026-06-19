@@ -70,8 +70,8 @@ extern "C" fn start() -> ! {
     let fb_request = FRAMEBUFFER_REQUEST.get_response().expect("Failed to get Framebuffer response");
     let fb_ptrs = unsafe { core::slice::from_raw_parts(fb_request.framebuffers, fb_request.framebuffer_count as usize) };
     let fb = unsafe {&*fb_ptrs[0] };
-    #[allow(static_mut_refs)]
-    unsafe { owos::kui::kdraw::GLOBAL_FB.call_once(|| fb); }
+    owos::kui::kdraw::GLOBAL_FB.call_once(|| owos::kui::kdraw::SyncFramebuffer(fb));
+    let fb = owos::kui::kdraw::GLOBAL_FB.get().unwrap();
     owos::println!("Success");
 
     owos::println!("Initializing fonts...");

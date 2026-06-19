@@ -1,4 +1,9 @@
-pub static mut GLOBAL_FB: spin::Once<&crate::limine::Framebuffer> = spin::Once::new();
+pub struct SyncFramebuffer(pub &'static crate::limine::Framebuffer);
+
+unsafe impl Sync for SyncFramebuffer {}
+unsafe impl Send for SyncFramebuffer {}
+
+pub static GLOBAL_FB: spin::Once<SyncFramebuffer> = spin::Once::new();
 
 fn draw_glyph(
     fb: *mut u8,
@@ -26,7 +31,7 @@ fn draw_glyph(
     }
 }
 
-pub fn draw_text(x: u32, y: u32, size: f32, font: &spin::Once<fontdue::Font>, text: &str, fb: &crate::limine::Framebuffer) {
+pub fn draw_text(x: u32, y: u32, size: f32, font: &spin::Once<fontdue::Font>, text: &str, fb: &crate::kui::kdraw::SyncFramebuffer) {
     let font = font.get().unwrap();
 
     let ascent = font.horizontal_line_metrics(size)
@@ -42,8 +47,8 @@ pub fn draw_text(x: u32, y: u32, size: f32, font: &spin::Once<fontdue::Font>, te
 
         if glyph_y >= 0 && glyph_x >= 0 {
             draw_glyph(
-                fb.base,
-                fb.pitch as usize,
+                fb.0.base,
+                fb.0.pitch as usize,
                 bitmap.as_slice(),
                 metrics.width,
                 metrics.height,
