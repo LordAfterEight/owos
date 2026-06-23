@@ -4,7 +4,7 @@ pub const FLAG_EXEC: u8 = 0b0010_0000;
 pub const FLAG_HIDE: u8 = 0b0001_0000;
 pub const FLAG_LOCK: u8 = 0b0000_1000;
 
-#[derive(bytemuck::Pod, bytemuck::Zeroable, Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct PlaintextFileHeader {
     pub name: [u8; 48],
@@ -99,13 +99,6 @@ impl PlaintextFile {
         Ok(())
     }
 
-    /// Writes a POD `T` as a new block.
-    pub fn write<T: bytemuck::NoUninit>(&mut self, val: &T) -> Result<(), FileIoError> {
-        self.check_access(true)?;
-        self.blocks.push(DataBlock::new(bytemuck::bytes_of(val).to_vec()));
-        Ok(())
-    }
-
     /// Writes a raw byte slice as a new block.
     pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), FileIoError> {
         self.check_access(true)?;
@@ -120,17 +113,6 @@ impl PlaintextFile {
             postcard::to_allocvec(val).map_err(|_| FileIoError::SerializeError)?
         ));
         Ok(())
-    }
-
-    /// Reads block at `index` as a POD `T`.
-    /// 
-    /// ## Important
-    /// You *must* know what the `T` you're trying to read is, otherwise you will
-    /// receive garbage.
-    pub fn read<T: bytemuck::Pod>(&self, index: usize) -> Result<&T, FileIoError> {
-        self.check_access(false)?;
-        let block = self.blocks.get(index).ok_or(FileIoError::OutOfBounds)?;
-        Ok(bytemuck::from_bytes(block.as_bytes()))
     }
 
     /// Reads block at `index` as raw bytes.
@@ -155,7 +137,10 @@ impl PlaintextFile {
     /// Layout: `(header: 64B)(block_count: u32)((len: u32)(data)...)`
     pub fn to_bytes(&self) -> Result<alloc::vec::Vec<u8>, FileIoError> {
         if self.locked() { return Err(FileIoError::Locked); }
-        let mut out = bytemuck::bytes_of(&self.header).to_vec();
+        let mut out = alloc::vec::Vec::new();
+        out.extend_from_slice(&self.header.name);
+        out.extend_from_slice(&self.header.extension);
+        out.push(self.header.flags);
         out.extend_from_slice(&(self.blocks.len() as u32).to_le_bytes());
         for block in &self.blocks {
             out.extend_from_slice(&(block.len() as u32).to_le_bytes());

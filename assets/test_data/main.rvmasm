@@ -1,0 +1,28 @@
+>CFG bit-width #32
+>CFG addr-width #16
+
+@BLCK mmio $3000 {
+    @VAR serial_port is $30
+    @VAR gpu_update_register is $301555
+    @VAR PS2 is $3F8
+}
+
+@BLCK data $5000 {
+    @VAR msg "Hello World"
+}
+
+@BLCK functions $6000 {
+    @FUNC print with @ARGS 1 {
+        reg:3 <- $0
+        while reg:2 != 0 {
+            reg:2 <- *(@ARG:0 + reg:3)
+            reg:2 -> mmio.serial_port
+            reg:3 <- reg:3 + $1
+        }
+        return
+    }
+}
+
+@BLCK start $4000 {
+    @CALL functions.print with &data.msg
+}

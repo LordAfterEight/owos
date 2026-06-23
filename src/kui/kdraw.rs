@@ -39,11 +39,18 @@ pub fn draw_text(x: u32, y: u32, size: f32, font: &spin::Once<fontdue::Font>, te
         .unwrap_or(size) as i32;
 
     let mut x_offset = 0i32;
+    let mut y_offset = 0.0;
     for char in text.chars() {
         let (metrics, bitmap) = font.rasterize(char, size);
 
         let glyph_y = y as i32 + ascent - metrics.height as i32 - metrics.ymin;
         let glyph_x = x as i32 + x_offset + metrics.xmin;
+
+        if char == '\n' {
+            y_offset += size;
+            x_offset = 0;
+            continue;
+        }
 
         if glyph_y >= 0 && glyph_x >= 0 {
             draw_glyph(
@@ -53,7 +60,7 @@ pub fn draw_text(x: u32, y: u32, size: f32, font: &spin::Once<fontdue::Font>, te
                 metrics.width,
                 metrics.height,
                 glyph_x as usize,
-                glyph_y as usize,
+                y_offset as usize + glyph_y as usize,
                 (255, 255, 255),
             );
         }

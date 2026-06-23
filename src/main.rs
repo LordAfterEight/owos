@@ -25,6 +25,8 @@ static STACK_SIZE: owos::limine::StackSizeRequest = owos::limine::stack_size_req
 #[unsafe(link_section = ".limine_requests")]
 static HHDM_REQUEST: owos::limine::HhdmRequest = owos::limine::hhdm_request();
 
+const test_data: &'static [u8] = include_bytes!("../assets/test_data/main.rvmasm");
+
 fn enable_sse() {
     unsafe {
         core::arch::asm!(
@@ -79,18 +81,21 @@ extern "C" fn start() -> ! {
     owos::println!("Done");
 
     owos::kui::kbackground(fb);
-    owos::kui::draw_text(10, 10, 20.0, &owos::kui::kfont::UIFONT_BOLD, owos::VERSION_STR, fb);
+    owos::kui::draw_text(10, 10, 20.0, &owos::kui::kfont::UIFONT_BOLD, &alloc::format!("OwOS v{}", core::env!("CARGO_PKG_VERSION")), fb);
 
     let string = "Hello World!".to_string();
     let mut file = owos::ofs::PlaintextFile::new("TestFile.txt").expect("Failed to create file");
-    file.write_bytes(&string.as_bytes());
-    file.write_serde(&Data::new("Inside File"));
+    file.write_bytes(&string.as_bytes()).expect("Failed to write to file");
+    file.write_serde(&Data::new("Inside File")).expect("Failed tow rite to file");
+
+    let lines: alloc::vec::Vec<&str> = str::from_utf8(test_data).unwrap().lines().collect();
 
     owos::println!("{:#?}", file);
     owos::println!("{:?}", alloc::string::String::from_utf8(file.read_bytes(0).unwrap().to_vec()).unwrap());
     owos::println!("{:?}", file.read_serde::<Data>(1).unwrap());
-    owos::println!("{:?}", alloc::string::String::from_utf8(file.read_bytes(1).unwrap().to_vec()).unwrap());
-    owos::println!("{:?}", file.read_serde::<Data>(0).unwrap());
+    owos::kui::draw_text(10, 30, 20.0, &owos::kui::kfont::UIFONT_BOLD, &alloc::format!("{:#?}", alloc::string::String::from_utf8(file.read_bytes(0).unwrap().to_vec())), fb);
+    owos::kui::draw_text(10, 100, 20.0, &owos::kui::kfont::UIFONT_BOLD, &alloc::format!("{:#?}", file.read_serde::<Data>(1).unwrap()), fb);
+    owos::kui::draw_text(10, 160, 20.0, &owos::kui::kfont::KFONT, &alloc::format!("{:#?}", lines), fb);
 
     loop { unsafe { core::arch::asm!("cli; hlt;") } }
 }
@@ -98,11 +103,8 @@ extern "C" fn start() -> ! {
 #[panic_handler]
 fn panic<'a, 'b>(info: &'a core::panic::PanicInfo<'b>) -> ! {
     owos::println!("Panic: {:?}", info);
-    #[allow(static_mut_refs)]
-    {
-        owos::kui::kbackground(unsafe { owos::kui::kdraw::GLOBAL_FB.get().unwrap() });
-        owos::kui::draw_text(20, 20, 30.0, &owos::kui::kfont::UIFONT_BOLD, "PANIC", unsafe { owos::kui::kdraw::GLOBAL_FB.get().unwrap() });
-    }
+    owos::kui::kbackground(owos::kui::kdraw::GLOBAL_FB.get().unwrap());
+    owos::kui::draw_text(20, 20, 30.0, &owos::kui::kfont::UIFONT_BOLD, "PANIC", owos::kui::kdraw::GLOBAL_FB.get().unwrap());
     loop {}
 }
 
