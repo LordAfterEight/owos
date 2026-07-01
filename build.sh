@@ -2,7 +2,7 @@
 set -e
 
 # Cleanup
-cargo clean
+# cargo clean
 rm -rf iso_root owos.iso
 
 # Build kernel

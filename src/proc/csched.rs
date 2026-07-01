@@ -1,11 +1,11 @@
 pub struct CooperativeScheduler {
-    procs: alloc::vec::Vec<alloc::boxed::Box<dyn crate::proc::Process>>
+    procs: alloc::vec::Vec<alloc::boxed::Box<dyn crate::proc::Process>>,
 }
 
 impl CooperativeScheduler {
     pub fn init() -> Self {
         Self {
-            procs: alloc::vec::Vec::new()
+            procs: alloc::vec::Vec::new(),
         }
     }
 
@@ -24,7 +24,7 @@ impl CooperativeScheduler {
                             self.procs.remove(i).on_uninit();
                             crate::println!("Process exited with error {:?}", err);
                             break;
-                        },
+                        }
                         Ok(crate::proc::ProcessEvent::Yielded) => break,
                         Ok(crate::proc::ProcessEvent::Closed(_code)) => {
                             self.procs.remove(i).on_uninit();

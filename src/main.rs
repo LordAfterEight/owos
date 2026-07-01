@@ -4,6 +4,7 @@ extern crate alloc;
 
 use alloc::string::ToString;
 use core::any::type_name_of_val;
+mod panic;
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
@@ -25,6 +26,8 @@ static STACK_SIZE: owos::limine::StackSizeRequest =
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static HHDM_REQUEST: owos::limine::HhdmRequest = owos::limine::hhdm_request();
+
+static PANICKING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 fn enable_sse() {
     unsafe {
@@ -103,9 +106,9 @@ extern "C" fn start() -> ! {
     owos::kui::kfont::init();
     owos::println!("Done");
 
-    owos::kui::kbackground();
-
+    owos::kui::ktitledwindow(&alloc::format!("OwOS v{}", env!("CARGO_PKG_VERSION")));
     let mut sched = owos::proc::csched::CooperativeScheduler::init();
+    sched.start();
 
     loop {
         unsafe { core::arch::asm!("cli; hlt;") }
@@ -113,32 +116,86 @@ extern "C" fn start() -> ! {
 }
 
 #[panic_handler]
-fn panic<'a, 'b>(info: &'a core::panic::PanicInfo<'b>) -> ! {
-    owos::println!("Panic: {:#?}", info);
-    owos::kui::kbackground();
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    unsafe {
+        core::arch::asm!("cli", options(nomem, nostack));
+    }
+
+    if PANICKING.swap(true, core::sync::atomic::Ordering::SeqCst) {
+        owos::println!("DOUBLE PANIC - halting");
+        loop {
+            unsafe {
+                core::arch::asm!("hlt");
+            }
+        }
+    }
+
+    owos::println!("================ KERNEL PANIC ================");
+    owos::println!("{info:#?}");
+
+    let trace = unsafe { panic::walk_stack() };
+    owos::println!("Stack trace ({} frames):", trace.count);
+    for (i, addr) in trace.frames[..trace.count].iter().enumerate() {
+        owos::println!("  #{i:<2}  {addr:#018x}");
+    }
+    owos::println!("================================================");
+
+    draw_panic_screen(info, &trace);
+
+    loop {
+        unsafe {
+            core::arch::asm!("hlt");
+        }
+    }
+}
+
+fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &panic::StackTrace) {
+    if owos::kui::kdraw::GLOBAL_FB.get().is_none() {
+        return;
+    }
+
+    let fb = owos::kui::kdraw::GLOBAL_FB.get().unwrap().0;
+    let width = fb.width as u32;
+    let height = fb.height as u32;
+
+    unsafe {
+        core::ptr::write_bytes(fb.base, 0, (fb.pitch * fb.height) as usize);
+    }
+
+    owos::kui::ktitledwindow("KERNEL PANIC");
+
+    let message = alloc::format!("{info:#?}");
     owos::kui::draw_text(
-        10,
-        10,
-        40.0,
-        &owos::kui::kfont::ORBITRON_BOLD,
-        "KERNEL PANIC",
-        0xC5003C,
-    );
-    owos::kui::draw_rect(
-        10,
-        55,
-        owos::kui::kdraw::GLOBAL_FB.get().unwrap().0.width as u32 - 10 * 2,
-        owos::kui::kdraw::GLOBAL_FB.get().unwrap().0.height as u32 - 65,
-        2,
-        0xC5003C,
-    );
-    owos::kui::draw_text(
-        20,
-        65,
-        15.0,
+        30,
+        75,
+        12.0,
         &owos::kui::kfont::KODEMONO_REGULAR,
-        &alloc::format!("{:#?}", info),
+        &message,
+        0xF3E600,
+    );
+
+    let trace_top = 275u32;
+    let line_height = 18u32;
+    let max_visible = height.saturating_sub(trace_top + 10) / line_height;
+    let visible = trace.count.min(max_visible as usize);
+
+    let mut trace_text = alloc::format!("Stack trace ({} frames):\n", trace.count);
+    for (i, addr) in trace.frames[..visible].iter().enumerate() {
+        trace_text.push_str(&alloc::format!("  #{i:<2}  {addr:#018x}\n"));
+    }
+    if visible < trace.count {
+        trace_text.push_str(&alloc::format!(
+            "  ... {} more (see serial output)\n",
+            trace.count - visible
+        ));
+    }
+
+    owos::kui::draw_text(
+        30,
+        trace_top as u32,
+        12.0,
+        &owos::kui::kfont::KODEMONO_REGULAR,
+        &trace_text,
         0x55EAD4,
     );
-    loop {}
 }
