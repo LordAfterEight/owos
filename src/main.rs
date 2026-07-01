@@ -78,13 +78,14 @@ extern "C" fn start() -> ! {
     owos::kui::kfont::init();
     owos::println!("Done");
 
-    owos::kui::kbackground(fb);
+    owos::kui::kbackground();
 
     let mut sched = owos::proc::csched::CooperativeScheduler::init();
 
     sched.add_process(CounterProcess::new("counter-a", 5, 0));
     sched.add_process(HeartbeatProcess::new());
     sched.add_process(CrashyProcess::new(10));
+    panic!("Test Panic");
 
     sched.start();
 
@@ -93,9 +94,25 @@ extern "C" fn start() -> ! {
 
 #[panic_handler]
 fn panic<'a, 'b>(info: &'a core::panic::PanicInfo<'b>) -> ! {
-    owos::println!("Panic: {:?}", info);
-    owos::kui::kbackground(owos::kui::kdraw::GLOBAL_FB.get().unwrap());
-    owos::kui::draw_text(20, 20, 30.0, &owos::kui::kfont::ORBITRON_BOLD, "PANIC", 0xFF0000);
+    owos::println!("Panic: {:#?}", info);
+    owos::kui::kbackground();
+    owos::kui::draw_text(
+        10,
+        10,
+        40.0,
+        &owos::kui::kfont::ORBITRON_BOLD,
+        "KERNEL PANIC",
+        0xC5003C
+    );
+    owos::kui::draw_rect(
+        10,
+        55,
+        owos::kui::kdraw::GLOBAL_FB.get().unwrap().0.width as u32 - 10 * 2,
+        owos::kui::kdraw::GLOBAL_FB.get().unwrap().0.height as u32 - 65,
+        2,
+        0xC5003C
+    );
+    owos::kui::draw_text(20, 65, 15.0, &owos::kui::kfont::KODEMONO_REGULAR, &alloc::format!("{:#?}", info), 0x55EAD4);
     loop {}
 }
 
@@ -135,8 +152,8 @@ impl Process for CounterProcess {
         owos::kui::kdraw::draw_text(
             10,
             10,
-            12.0,
-            &owos::kui::kfont::ORBITRON_REGULAR,
+            20.0,
+            &owos::kui::kfont::SAIBA45,
             &alloc::format!("{} tick, {} left", self.name, self.ticks_remaining),
             0xFFFFFF
         );
@@ -167,8 +184,8 @@ impl Process for HeartbeatProcess {
             owos::println!("Beats: {}", self.beats);
             owos::kui::kdraw::draw_text(
                 10,
-                20,
-                12.0,
+                30,
+                20.0,
                 &owos::kui::kfont::SAIBA45,
                 &alloc::format!("{}", self.beats),
                 0xFFFFFF
@@ -201,9 +218,9 @@ impl Process for CrashyProcess {
         owos::println!("Ticks before crash: {}", self.ticks_before_crash);
         owos::kui::kdraw::draw_text(
             10,
-            30,
-            12.0,
-            &owos::kui::kfont::ORBITRON_REGULAR,
+            50,
+            20.0,
+            &owos::kui::kfont::SAIBA45,
             &alloc::format!("Ticks before crash: {}", self.ticks_before_crash),
             0xFFFFFF
         );

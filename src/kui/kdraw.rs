@@ -72,7 +72,7 @@ pub fn draw_text(
         let glyph_x = x as i32 + x_offset + metrics.xmin;
 
         if char == '\n' {
-            y_offset += size;
+            y_offset += metrics.height as f32 + 5.0;
             x_offset = 0;
             continue;
         }

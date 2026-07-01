@@ -5,8 +5,8 @@ pub use kdraw::draw_rect;
 
 
 /// Fills the screen with dark grey horizontal lines
-pub fn kbackground(fb: &crate::kui::kdraw::SyncFramebuffer) {
+pub fn kbackground() {
     unsafe {
-        core::ptr::write_bytes(fb.0.base, 0, fb.0.pitch as usize);
+        core::ptr::write_bytes(crate::kui::kdraw::GLOBAL_FB.get().unwrap().0.base, 0, crate::kui::kdraw::GLOBAL_FB.get().unwrap().0.pitch as usize);
     };
 }
