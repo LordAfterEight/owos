@@ -25,8 +25,6 @@ static STACK_SIZE: owos::limine::StackSizeRequest = owos::limine::stack_size_req
 #[unsafe(link_section = ".limine_requests")]
 static HHDM_REQUEST: owos::limine::HhdmRequest = owos::limine::hhdm_request();
 
-const test_data: &'static [u8] = include_bytes!("../assets/test_data/main.rvmasm");
-
 fn enable_sse() {
     unsafe {
         core::arch::asm!(
@@ -81,21 +79,14 @@ extern "C" fn start() -> ! {
     owos::println!("Done");
 
     owos::kui::kbackground(fb);
-    owos::kui::draw_text(10, 10, 20.0, &owos::kui::kfont::UIFONT_BOLD, &alloc::format!("OwOS v{}", core::env!("CARGO_PKG_VERSION")), fb);
 
-    let string = "Hello World!".to_string();
-    let mut file = owos::ofs::PlaintextFile::new("TestFile.txt").expect("Failed to create file");
-    file.write_bytes(&string.as_bytes()).expect("Failed to write to file");
-    file.write_serde(&Data::new("Inside File")).expect("Failed tow rite to file");
+    let mut sched = owos::proc::csched::CooperativeScheduler::init();
 
-    let lines: alloc::vec::Vec<&str> = str::from_utf8(test_data).unwrap().lines().collect();
+    sched.add_process(CounterProcess::new("counter-a", 5, 0));
+    sched.add_process(HeartbeatProcess::new());
+    sched.add_process(CrashyProcess::new(10));
 
-    owos::println!("{:#?}", file);
-    owos::println!("{:?}", alloc::string::String::from_utf8(file.read_bytes(0).unwrap().to_vec()).unwrap());
-    owos::println!("{:?}", file.read_serde::<Data>(1).unwrap());
-    owos::kui::draw_text(10, 30, 20.0, &owos::kui::kfont::UIFONT_BOLD, &alloc::format!("{:#?}", alloc::string::String::from_utf8(file.read_bytes(0).unwrap().to_vec())), fb);
-    owos::kui::draw_text(10, 100, 20.0, &owos::kui::kfont::UIFONT_BOLD, &alloc::format!("{:#?}", file.read_serde::<Data>(1).unwrap()), fb);
-    owos::kui::draw_text(10, 160, 20.0, &owos::kui::kfont::KFONT, &alloc::format!("{:#?}", lines), fb);
+    sched.start();
 
     loop { unsafe { core::arch::asm!("cli; hlt;") } }
 }
@@ -104,19 +95,124 @@ extern "C" fn start() -> ! {
 fn panic<'a, 'b>(info: &'a core::panic::PanicInfo<'b>) -> ! {
     owos::println!("Panic: {:?}", info);
     owos::kui::kbackground(owos::kui::kdraw::GLOBAL_FB.get().unwrap());
-    owos::kui::draw_text(20, 20, 30.0, &owos::kui::kfont::UIFONT_BOLD, "PANIC", owos::kui::kdraw::GLOBAL_FB.get().unwrap());
+    owos::kui::draw_text(20, 20, 30.0, &owos::kui::kfont::ORBITRON_BOLD, "PANIC", 0xFF0000);
     loop {}
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-struct Data {
-    name: alloc::string::String,
+
+// ==== NOTE ====
+// ! The following testing programs were written by Claude Sonnet 5 on 01.07.2026
+// ! This is purely for testing and debugging purposes
+
+
+use alloc::boxed::Box;
+use owos::proc::{Process, ProcessEvent, ProcessError};
+
+/// Runs for a fixed number of ticks, then closes with an exit code.
+pub struct CounterProcess {
+    name: &'static str,
+    ticks_remaining: u32,
+    exit_code: i8,
 }
 
-impl Data {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string()
-        }
+impl CounterProcess {
+    pub fn new(name: &'static str, ticks: u32, exit_code: i8) -> Self {
+        Self { name, ticks_remaining: ticks, exit_code }
     }
+}
+
+impl Process for CounterProcess {
+    fn on_init() where Self: Sized {
+        owos::println!("Counter process initialized");
+    }
+
+    fn on_tick(&mut self) -> Result<ProcessEvent, ProcessError> {
+        if self.ticks_remaining == 0 {
+            return Ok(ProcessEvent::Closed(self.exit_code));
+        }
+        self.ticks_remaining -= 1;
+        owos::println!("{} tick, {} left", self.name, self.ticks_remaining);
+        owos::kui::kdraw::draw_text(
+            10,
+            10,
+            12.0,
+            &owos::kui::kfont::ORBITRON_REGULAR,
+            &alloc::format!("{} tick, {} left", self.name, self.ticks_remaining),
+            0xFFFFFF
+        );
+        Ok(ProcessEvent::Yielded)
+    }
+
+    fn on_uninit(self: Box<Self>) {
+        owos::println!("{} shutting down", self.name);
+    }
+}
+
+/// Never closes, always yields — good for checking round-robin fairness.
+pub struct HeartbeatProcess {
+    beats: u64,
+}
+
+impl HeartbeatProcess {
+    pub fn new() -> Self { Self { beats: 0 } }
+}
+
+impl Process for HeartbeatProcess {
+    fn on_init() where Self: Sized {
+        owos::println!("Heartbeat process initialized");
+    }
+
+    fn on_tick(&mut self) -> Result<ProcessEvent, ProcessError> {
+        if self.beats % 10_000_000 == 0 {
+            owos::println!("Beats: {}", self.beats);
+            owos::kui::kdraw::draw_text(
+                10,
+                20,
+                12.0,
+                &owos::kui::kfont::SAIBA45,
+                &alloc::format!("{}", self.beats),
+                0xFFFFFF
+            );
+        }
+        self.beats = self.beats.wrapping_add(1);
+        Ok(ProcessEvent::Yielded)
+    }
+
+    fn on_uninit(self: Box<Self>) {}
+}
+
+/// Ticks a few times, then errors out — tests scheduler.start()'s Err path.
+pub struct CrashyProcess {
+    ticks_before_crash: u32,
+}
+
+impl CrashyProcess {
+    pub fn new(ticks_before_crash: u32) -> Self {
+        Self { ticks_before_crash }
+    }
+}
+
+impl Process for CrashyProcess {
+    fn on_init() where Self: Sized {
+        owos::println!("Crashy process initialized");
+    }
+
+    fn on_tick(&mut self) -> Result<ProcessEvent, ProcessError> {
+        owos::println!("Ticks before crash: {}", self.ticks_before_crash);
+        owos::kui::kdraw::draw_text(
+            10,
+            30,
+            12.0,
+            &owos::kui::kfont::ORBITRON_REGULAR,
+            &alloc::format!("Ticks before crash: {}", self.ticks_before_crash),
+            0xFFFFFF
+        );
+        if self.ticks_before_crash == 0 {
+            return Err(ProcessError::Crashed(-1));
+        }
+        self.ticks_before_crash -= 1;
+        Ok(ProcessEvent::Yielded)
+    }
+
+    fn on_uninit(self: Box<Self>) {}
 }

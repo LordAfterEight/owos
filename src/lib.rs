@@ -21,4 +21,7 @@ pub mod kui;
 /// OwOS File System
 pub mod ofs;
 
+/// Processes
+pub mod proc;
+
 pub const VERSION_STR: &str = "OwOS v0.1.0";
