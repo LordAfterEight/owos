@@ -21,11 +21,21 @@ pub fn kbackground() {
 pub fn ktitledwindow(title: &str) {
     kbackground();
     crate::kui::draw_text(
-        10,
+        15,
         10,
         40.0,
-        &crate::kui::kfont::ORBITRON_REGULAR,
+        &crate::kui::kfont::BARCODE,
         title,
+        0xC5003C,
+    );
+    let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
+    let text = alloc::format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    crate::kui::draw_text(
+        fb.width as u32 - crate::kui::kdraw::text_length(&text, &crate::kui::kfont::BARCODE, 25.0) as u32 - 20,
+        fb.height as u32 - 40,
+        25.0,
+        &crate::kui::kfont::BARCODE,
+        &text,
         0xC5003C,
     );
 }

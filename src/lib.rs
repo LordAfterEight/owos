@@ -24,4 +24,7 @@ pub mod ofs;
 /// Processes
 pub mod proc;
 
+/// Apps
+pub mod apps;
+
 pub const VERSION_STR: &str = "OwOS v0.1.0";

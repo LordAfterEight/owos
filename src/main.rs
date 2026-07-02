@@ -109,7 +109,8 @@ extern "C" fn start() -> ! {
     owos::kui::ktitledwindow(&alloc::format!("OwOS v{}", env!("CARGO_PKG_VERSION")));
     let mut scheduler = owos::proc::csched::CooperativeScheduler::init();
 
-    scheduler.add_process::<ProcessTracker>();
+    scheduler.add_process::<owos::apps::proctracker::ProcessTracker>();
+    scheduler.add_process::<owos::apps::memtracker::MemTracker>();
 
     match scheduler.start() {
         Ok(()) => unreachable!("start() only returns on error"),
@@ -154,90 +155,5 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         unsafe {
             core::arch::asm!("hlt");
         }
-    }
-}
-
-
-
-pub struct ProcessTracker {
-    pid: u32,
-    name: &'static str,
-    status: owos::proc::ProcessStatus,
-    tick_count: u32,
-    report_every: u32,
-}
-
-impl owos::proc::Process for ProcessTracker {
-    fn new() -> alloc::boxed::Box<Self> {
-        alloc::boxed::Box::new(Self {
-            pid: 0,
-            name: "ProcessTracker",
-            status: owos::proc::ProcessStatus::Running,
-            tick_count: 0,
-            report_every: 1_000_000,
-        })
-    }
-
-    fn on_init(&self) {
-        owos::println!("[{}] init (pid {})", self.name, self.pid);
-        owos::kui::ktitledwindow("Process Tracker");
-    }
-
-    fn on_tick(&mut self) -> Result<owos::proc::ProcessEvent, owos::proc::ProcessError> {
-        self.tick_count += 1;
-        if self.tick_count % self.report_every == 0 {
-            let table = owos::proc::registry::PROCESS_TABLE.lock();
-            owos::println!("--- {} processes alive ---", table.len());
-            for (i, entry) in table.iter().enumerate() {
-                owos::println!(
-                    "  pid {:>3}  {:<16} {:?}",
-                    entry.pid,
-                    entry.name,
-                    entry.status
-                );
-                let text =
-                    &alloc::format!("PID: {} | {} | {:?}", entry.pid, entry.name, entry.status);
-                owos::kui::draw_rect(
-                    20,
-                    65 + i as u32 * 15,
-                    owos::kui::kdraw::text_length(text, &owos::kui::kfont::KODEMONO_BOLD, 15.0) as u32,
-                    18,
-                    15,
-                    0
-                );
-                owos::kui::draw_text(
-                    20,
-                    65 + i as u32 * 15,
-                    15.0,
-                    &owos::kui::kfont::KODEMONO_BOLD,
-                    text,
-                    0x55EAD4,
-                );
-            }
-        }
-        Ok(owos::proc::ProcessEvent::Yielded)
-    }
-
-    fn on_uninit(self: alloc::boxed::Box<Self>) {
-        owos::println!("[{}] uninit", self.name);
-    }
-
-    fn pid(&self) -> u32 {
-        self.pid
-    }
-    fn name(&self) -> &'static str {
-        self.name
-    }
-    fn set_pid(&mut self, pid: u32) {
-        self.pid = pid;
-    }
-    fn set_name(&mut self, name: &'static str) {
-        self.name = name;
-    }
-    fn status(&self) -> owos::proc::ProcessStatus {
-        self.status
-    }
-    fn set_status(&mut self, status: owos::proc::ProcessStatus) {
-        self.status = status;
     }
 }

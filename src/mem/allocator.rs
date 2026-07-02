@@ -26,6 +26,18 @@ impl BumpAllocator {
             *self.ptr.get()  = 0;
         }
     }
+
+    pub fn total(&self) -> usize {
+        unsafe { *self.len.get() }
+    }
+
+    pub fn used(&self) -> usize {
+        unsafe { *self.ptr.get() }
+    }
+
+    pub fn free(&self) -> usize {
+        self.total() - self.used()
+    }
 }
 
 unsafe impl core::alloc::GlobalAlloc for BumpAllocator {
