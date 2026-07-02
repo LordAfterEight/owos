@@ -10,6 +10,15 @@ fn fb() -> &'static crate::limine::Framebuffer {
     GLOBAL_FB.get().expect("GLOBAL_FB not initialized").0
 }
 
+pub fn text_length(text: &str, font: &spin::Once<fontdue::Font>, size: f32) -> usize {
+    let mut width = 0;
+    for char in text.chars() {
+        let (metrics, _bitmap) = font.get().unwrap().rasterize(char, size);
+        width += metrics.advance_width as usize;
+    }
+    width
+}
+
 fn draw_glyph(
     fb: *mut u8,
     fb_stride: usize,

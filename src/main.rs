@@ -107,11 +107,19 @@ extern "C" fn start() -> ! {
     owos::println!("Done");
 
     owos::kui::ktitledwindow(&alloc::format!("OwOS v{}", env!("CARGO_PKG_VERSION")));
-    let mut sched = owos::proc::csched::CooperativeScheduler::init();
-    sched.start();
+    let mut scheduler = owos::proc::csched::CooperativeScheduler::init();
+
+    scheduler.add_process::<ProcessTracker>();
+
+    match scheduler.start() {
+        Ok(()) => unreachable!("start() only returns on error"),
+        Err(e) => owos::println!("scheduler exited: {:?}", e),
+    }
 
     loop {
-        unsafe { core::arch::asm!("cli; hlt;") }
+        unsafe {
+            core::arch::asm!("cli; hlt;");
+        }
     }
 }
 
@@ -140,7 +148,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     }
     owos::println!("================================================");
 
-    draw_panic_screen(info, &trace);
+    panic::draw_panic_screen(info, &trace);
 
     loop {
         unsafe {
@@ -149,53 +157,87 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     }
 }
 
-fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &panic::StackTrace) {
-    if owos::kui::kdraw::GLOBAL_FB.get().is_none() {
-        return;
+
+
+pub struct ProcessTracker {
+    pid: u32,
+    name: &'static str,
+    status: owos::proc::ProcessStatus,
+    tick_count: u32,
+    report_every: u32,
+}
+
+impl owos::proc::Process for ProcessTracker {
+    fn new() -> alloc::boxed::Box<Self> {
+        alloc::boxed::Box::new(Self {
+            pid: 0,
+            name: "ProcessTracker",
+            status: owos::proc::ProcessStatus::Running,
+            tick_count: 0,
+            report_every: 1_000_000,
+        })
     }
 
-    let fb = owos::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-    let width = fb.width as u32;
-    let height = fb.height as u32;
-
-    unsafe {
-        core::ptr::write_bytes(fb.base, 0, (fb.pitch * fb.height) as usize);
+    fn on_init(&self) {
+        owos::println!("[{}] init (pid {})", self.name, self.pid);
+        owos::kui::ktitledwindow("Process Tracker");
     }
 
-    owos::kui::ktitledwindow("KERNEL PANIC");
-
-    let message = alloc::format!("{info:#?}");
-    owos::kui::draw_text(
-        30,
-        75,
-        12.0,
-        &owos::kui::kfont::KODEMONO_REGULAR,
-        &message,
-        0xF3E600,
-    );
-
-    let trace_top = 275u32;
-    let line_height = 18u32;
-    let max_visible = height.saturating_sub(trace_top + 10) / line_height;
-    let visible = trace.count.min(max_visible as usize);
-
-    let mut trace_text = alloc::format!("Stack trace ({} frames):\n", trace.count);
-    for (i, addr) in trace.frames[..visible].iter().enumerate() {
-        trace_text.push_str(&alloc::format!("  #{i:<2}  {addr:#018x}\n"));
+    fn on_tick(&mut self) -> Result<owos::proc::ProcessEvent, owos::proc::ProcessError> {
+        self.tick_count += 1;
+        if self.tick_count % self.report_every == 0 {
+            let table = owos::proc::registry::PROCESS_TABLE.lock();
+            owos::println!("--- {} processes alive ---", table.len());
+            for (i, entry) in table.iter().enumerate() {
+                owos::println!(
+                    "  pid {:>3}  {:<16} {:?}",
+                    entry.pid,
+                    entry.name,
+                    entry.status
+                );
+                let text =
+                    &alloc::format!("PID: {} | {} | {:?}", entry.pid, entry.name, entry.status);
+                owos::kui::draw_rect(
+                    20,
+                    65 + i as u32 * 15,
+                    owos::kui::kdraw::text_length(text, &owos::kui::kfont::KODEMONO_BOLD, 15.0) as u32,
+                    18,
+                    15,
+                    0
+                );
+                owos::kui::draw_text(
+                    20,
+                    65 + i as u32 * 15,
+                    15.0,
+                    &owos::kui::kfont::KODEMONO_BOLD,
+                    text,
+                    0x55EAD4,
+                );
+            }
+        }
+        Ok(owos::proc::ProcessEvent::Yielded)
     }
-    if visible < trace.count {
-        trace_text.push_str(&alloc::format!(
-            "  ... {} more (see serial output)\n",
-            trace.count - visible
-        ));
+
+    fn on_uninit(self: alloc::boxed::Box<Self>) {
+        owos::println!("[{}] uninit", self.name);
     }
 
-    owos::kui::draw_text(
-        30,
-        trace_top as u32,
-        12.0,
-        &owos::kui::kfont::KODEMONO_REGULAR,
-        &trace_text,
-        0x55EAD4,
-    );
+    fn pid(&self) -> u32 {
+        self.pid
+    }
+    fn name(&self) -> &'static str {
+        self.name
+    }
+    fn set_pid(&mut self, pid: u32) {
+        self.pid = pid;
+    }
+    fn set_name(&mut self, name: &'static str) {
+        self.name = name;
+    }
+    fn status(&self) -> owos::proc::ProcessStatus {
+        self.status
+    }
+    fn set_status(&mut self, status: owos::proc::ProcessStatus) {
+        self.status = status;
+    }
 }
