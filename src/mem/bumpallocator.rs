@@ -1,5 +1,3 @@
-#[global_allocator]
-pub static ALLOCATOR: BumpAllocator = BumpAllocator::uninit();
 
 
 pub struct BumpAllocator {
