@@ -55,31 +55,9 @@ impl crate::proc::Process for OfsDriver {
                 }
             }
             if self.files.is_empty() {
-                let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-                let text_length = crate::kui::kdraw::text_length(
-                    "Deallocating Files...",
-                    &crate::kui::kfont::ICELAND,
-                    28.0,
-                );
-                let x_pos = fb.width as u32 / 2 - text_length as u32 / 2;
-                crate::kui::kdraw::draw_rect(
-                    x_pos - 10,
-                    fb.height as u32 / 2,
-                    text_length as u32 + 10,
-                    30,
-                    15,
-                    0xF3E600,
-                );
-                crate::kui::kdraw::draw_text(
-                    x_pos,
-                    fb.height as u32 / 2 + 2,
-                    28.0,
-                    &crate::kui::kfont::ICELAND,
-                    "Deallocating Files",
-                    0x0,
-                );
                 return Ok(crate::proc::ProcessEvent::Closed(0));
             }
+
             return Ok(crate::proc::ProcessEvent::Yielded);
         }
 
