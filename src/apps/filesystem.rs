@@ -58,8 +58,8 @@ impl crate::proc::Process for OfsDriver {
                 let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
                 let text_length = crate::kui::kdraw::text_length(
                     "Deallocating Files...",
-                    &crate::kui::kfont::ORBITRON_REGULAR,
-                    20.0,
+                    &crate::kui::kfont::ICELAND,
+                    28.0,
                 );
                 let x_pos = fb.width as u32 / 2 - text_length as u32 / 2;
                 crate::kui::kdraw::draw_rect(
@@ -68,15 +68,15 @@ impl crate::proc::Process for OfsDriver {
                     text_length as u32 + 10,
                     30,
                     15,
-                    0xF3E600
+                    0xF3E600,
                 );
                 crate::kui::kdraw::draw_text(
                     x_pos,
-                    fb.height as u32 / 2 + 8,
-                    20.0,
-                    &crate::kui::kfont::ORBITRON_REGULAR,
+                    fb.height as u32 / 2 + 2,
+                    28.0,
+                    &crate::kui::kfont::ICELAND,
                     "Deallocating Files",
-                    0x0
+                    0x0,
                 );
                 return Ok(crate::proc::ProcessEvent::Closed(0));
             }
@@ -119,6 +119,7 @@ impl crate::proc::Process for OfsDriver {
     }
 
     fn on_uninit(mut self: alloc::boxed::Box<Self>) {
+        crate::proc::create_spawn_task::<OfsDriver>();
         self.files.clear();
     }
 }

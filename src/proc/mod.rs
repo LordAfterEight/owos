@@ -2,7 +2,9 @@ pub mod csched;
 pub mod registry;
 
 pub trait Process {
-    fn new() -> alloc::boxed::Box<Self> where Self: Sized;
+    fn new() -> alloc::boxed::Box<Self>
+    where
+        Self: Sized;
     fn on_tick(&mut self) -> Result<ProcessEvent, ProcessError>;
     fn on_uninit(self: alloc::boxed::Box<Self>);
     fn on_init(&self);
@@ -31,4 +33,16 @@ pub enum ProcessStatus {
     Running,
     Frozen,
     Sleeping,
+}
+
+/// Queues a spawn request for a process of type `T`.
+///
+/// `T` must implement `Process + Send + 'static`.
+/// The process will be spawned the next time the scheduler drains its command queue.
+pub fn create_spawn_task<T: Process + Send + 'static>() {
+    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+        .lock()
+        .push_back(crate::proc::csched::SchedulerTask::Spawn(
+            alloc::boxed::Box::new(|| <T as crate::proc::Process>::new()),
+        ));
 }

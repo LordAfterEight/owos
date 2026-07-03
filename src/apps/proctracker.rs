@@ -22,7 +22,6 @@ impl crate::proc::Process for ProcessTracker {
     }
 
     fn on_init(&self) {
-        crate::println!("[{}] init (pid {})", self.name, self.pid);
         crate::kui::ktitledwindow("Process Tracker");
     }
 
@@ -32,10 +31,6 @@ impl crate::proc::Process for ProcessTracker {
             let table = crate::proc::registry::PROCESS_TABLE.lock();
             //crate::println!("--- {} processes alive ---", table.len());
             for (i, entry) in table.iter().enumerate() {
-                if i < self.last_amount as usize {
-                    crate::kui::ktitledwindow("Process Tracker");
-                }
-                self.last_amount = i as u32;
                 // crate::println!(
                 //     "  pid {:>3}  {:<16} {:?}",
                 //     entry.pid,
@@ -47,10 +42,11 @@ impl crate::proc::Process for ProcessTracker {
                 crate::kui::draw_rect(
                     20,
                     65 + i as u32 * 20,
-                    crate::kui::kdraw::text_length(text, &crate::kui::kfont::KODEMONO_BOLD, 15.0) as u32,
+                    crate::kui::kdraw::text_length(text, &crate::kui::kfont::KODEMONO_BOLD, 15.0)
+                        as u32,
                     18,
                     15,
-                    0
+                    0,
                 );
                 crate::kui::draw_text(
                     20,
@@ -60,7 +56,24 @@ impl crate::proc::Process for ProcessTracker {
                     text,
                     0x55EAD4,
                 );
+                self.current_amount = i as u32 + 1;
             }
+            if self.current_amount < self.last_amount {
+                crate::println!(
+                    "[{}]: One or more processes closed. {} active",
+                    core::any::type_name_of_val(&self),
+                    self.current_amount
+                );
+                crate::kui::ktitledwindow("Process Tracker");
+            }
+            if self.current_amount > self.last_amount {
+                crate::println!(
+                    "[{}]: Registered {} new process(es)",
+                    core::any::type_name_of_val(&self),
+                    self.current_amount
+                );
+            }
+            self.last_amount = self.current_amount;
         }
         Ok(crate::proc::ProcessEvent::Yielded)
     }

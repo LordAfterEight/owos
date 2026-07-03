@@ -38,7 +38,6 @@ impl crate::proc::Process for MemTracker {
     }
 
     fn on_init(&self) {
-        crate::println!("[Memory Tracker] init (pid {})", self.pid);
     }
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
