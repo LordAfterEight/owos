@@ -4,6 +4,8 @@ pub struct ProcessTracker {
     status: crate::proc::ProcessStatus,
     tick_count: u32,
     report_every: u32,
+    current_amount: u32,
+    last_amount: u32,
 }
 
 impl crate::proc::Process for ProcessTracker {
@@ -14,6 +16,8 @@ impl crate::proc::Process for ProcessTracker {
             status: crate::proc::ProcessStatus::Running,
             tick_count: 0,
             report_every: 1_000_000,
+            current_amount: 0,
+            last_amount: 0,
         })
     }
 
@@ -26,14 +30,18 @@ impl crate::proc::Process for ProcessTracker {
         self.tick_count += 1;
         if self.tick_count % self.report_every == 0 {
             let table = crate::proc::registry::PROCESS_TABLE.lock();
-            crate::println!("--- {} processes alive ---", table.len());
+            //crate::println!("--- {} processes alive ---", table.len());
             for (i, entry) in table.iter().enumerate() {
-                crate::println!(
-                    "  pid {:>3}  {:<16} {:?}",
-                    entry.pid,
-                    entry.name,
-                    entry.status
-                );
+                if i < self.last_amount as usize {
+                    crate::kui::ktitledwindow("Process Tracker");
+                }
+                self.last_amount = i as u32;
+                // crate::println!(
+                //     "  pid {:>3}  {:<16} {:?}",
+                //     entry.pid,
+                //     entry.name,
+                //     entry.status
+                // );
                 let text =
                     &alloc::format!("PID: {} | {} | {:?}", entry.pid, entry.name, entry.status);
                 crate::kui::draw_rect(

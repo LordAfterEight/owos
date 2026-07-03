@@ -1,6 +1,6 @@
 // ! NOTE
-// The following code was written by Claude Sonnet, High Effort, on 02.07.2026
-// This was the fastest way to get this allocator running while allowing me to learn how it works
+// The following code was written by Claude Sonnet 5, High Effort, on 02.07.2026
+// This was the fastest way to get this allocator running while allowing me to learn how it works.
 // I plan to eventually rewrite it myself.
 
 use core::alloc::{GlobalAlloc, Layout};
@@ -28,6 +28,8 @@ pub struct FreeListAllocator {
     /// Should stay at 0 in normal operation — a canary for the old bug,
     /// and a fallback safety net for oversized-alignment requests (see below).
     leaked: UnsafeCell<usize>,
+    alloc_ops: core::sync::atomic::AtomicU64,
+    dealloc_ops: core::sync::atomic::AtomicU64,
 }
 
 unsafe impl Sync for FreeListAllocator {}
@@ -39,6 +41,8 @@ impl FreeListAllocator {
             base: UnsafeCell::new(core::ptr::null_mut()),
             len:  UnsafeCell::new(0),
             leaked: UnsafeCell::new(0),
+            alloc_ops: core::sync::atomic::AtomicU64::new(0),
+            dealloc_ops: core::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -108,6 +112,23 @@ impl FreeListAllocator {
         // size_align is always valid here since we're only ever rounding up
         Layout::from_size_align(size, align).unwrap()
     }
+
+    pub fn free_node_count(&self) -> usize {
+        let mut n = 0;
+        let mut cur = unsafe { *self.head.get() };
+        while let Some(node) = cur {
+            n += 1;
+            cur = unsafe { node.as_ref().next };
+        }
+        n
+    }
+
+    pub fn alloc_ops(&self) -> u64 {
+        self.alloc_ops.load(core::sync::atomic::Ordering::Relaxed)
+    }
+    pub fn dealloc_ops(&self) -> u64 {
+        self.dealloc_ops.load(core::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 unsafe impl GlobalAlloc for FreeListAllocator {
@@ -175,12 +196,77 @@ unsafe impl GlobalAlloc for FreeListAllocator {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let layout = Self::adjust_layout(layout);
-        let node_ptr = ptr as *mut FreeListNode;
+        let new_addr = ptr as usize;
+        let new_size = layout.size();
+        let head_ptr = self.head.get();
 
         unsafe {
-            let head = *self.head.get();
-            node_ptr.write(FreeListNode { size: layout.size(), next: head });
-            *self.head.get() = Some(NonNull::new_unchecked(node_ptr));
+            // Walk to find the sorted insertion point: prev.addr < new_addr < cur.addr
+            let mut prev: Option<NonNull<FreeListNode>> = None;
+            let mut cur = *head_ptr;
+            while let Some(node) = cur {
+                if node.as_ptr() as usize > new_addr {
+                    break;
+                }
+                prev = cur;
+                cur = node.as_ref().next;
+            }
+
+            // Does the new block glue onto the end of `prev`?
+            let merged_with_prev = if let Some(mut p) = prev {
+                let p_ref = p.as_mut();
+                if p.as_ptr() as usize + p_ref.size == new_addr {
+                    p_ref.size += new_size;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Does `cur` glue onto the end of the new block (or the now-merged prev)?
+            let absorbs_cur = match cur {
+                Some(c) => {
+                    let boundary = if merged_with_prev {
+                        prev.unwrap().as_ref().size + prev.unwrap().as_ptr() as usize
+                    } else {
+                        new_addr + new_size
+                    };
+                    boundary == c.as_ptr() as usize
+                }
+                None => false,
+            };
+
+            if merged_with_prev {
+                if absorbs_cur {
+                    let c = cur.unwrap();
+                    prev.unwrap().as_mut().size += c.as_ref().size;
+                    prev.unwrap().as_mut().next = c.as_ref().next;
+                }
+                // else: prev already relinked correctly, nothing else to do
+            } else if absorbs_cur {
+                let c = cur.unwrap();
+                let node_ptr = ptr as *mut FreeListNode;
+                node_ptr.write(FreeListNode {
+                    size: new_size + c.as_ref().size,
+                    next: c.as_ref().next,
+                });
+                let new_node = Some(NonNull::new_unchecked(node_ptr));
+                match prev {
+                    Some(mut p) => p.as_mut().next = new_node,
+                    None => *head_ptr = new_node,
+                }
+            } else {
+                // No merge either side — plain sorted insert
+                let node_ptr = ptr as *mut FreeListNode;
+                node_ptr.write(FreeListNode { size: new_size, next: cur });
+                let new_node = Some(NonNull::new_unchecked(node_ptr));
+                match prev {
+                    Some(mut p) => p.as_mut().next = new_node,
+                    None => *head_ptr = new_node,
+                }
+            }
         }
     }
 }

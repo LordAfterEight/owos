@@ -16,6 +16,7 @@ pub trait Process {
 
 #[derive(PartialEq, Eq)]
 pub enum ProcessEvent {
+    Continue,
     Yielded,
     Closed(i8),
 }

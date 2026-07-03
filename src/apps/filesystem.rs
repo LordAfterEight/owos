@@ -4,6 +4,8 @@ pub struct OfsDriver {
     status: crate::proc::ProcessStatus,
 
     files: alloc::vec::Vec<crate::ofs::PlaintextFile>,
+    ticks: u32,
+    closing: bool,
 }
 
 impl crate::proc::Process for OfsDriver {
@@ -13,7 +15,9 @@ impl crate::proc::Process for OfsDriver {
             pid: 0,
             status: crate::proc::ProcessStatus::Running,
 
-            files: alloc::vec::Vec::new()
+            files: alloc::vec::Vec::new(),
+            ticks: 0,
+            closing: false,
         })
     }
 
@@ -41,11 +45,52 @@ impl crate::proc::Process for OfsDriver {
         self.status = status;
     }
 
-    fn on_init(&self) {
-        
-    }
+    fn on_init(&self) {}
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
+        if self.closing {
+            for _ in 0..1000 {
+                if self.files.pop().is_none() { break; }
+            }
+            if self.files.is_empty() {
+                return Ok(crate::proc::ProcessEvent::Closed(0));
+            }
+            return Ok(crate::proc::ProcessEvent::Yielded);
+        }
+
+        self.ticks += 1;
+
+        if self.ticks % 10 == 0 {
+            let mut file = crate::ofs::PlaintextFile::new("TestFile.txt").unwrap();
+            file.write_bytes("Hello World!".as_bytes()).unwrap();
+            self.files.push(file);
+        }
+
+        if self.files.len() == 16_700_000 {
+            self.closing = true;
+        }
+
+        if self.ticks % 100_000 == 0 {
+            let text = &alloc::format!("Tracking {} files", self.files.len());
+            crate::kui::kdraw::draw_rect(
+                20,
+                200,
+                crate::kui::kdraw::text_length(text, &crate::kui::kfont::ICELAND, 20.0) as u32,
+                20,
+                10,
+                0,
+            );
+            crate::kui::kdraw::draw_text(
+                20,
+                200,
+                20.0,
+                &crate::kui::kfont::ICELAND,
+                text,
+                0x55EAD4,
+            );
+        }
+
+
         Ok(crate::proc::ProcessEvent::Yielded)
     }
 

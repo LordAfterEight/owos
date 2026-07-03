@@ -81,6 +81,7 @@ impl CooperativeScheduler {
                             removed = true;
                             break;
                         }
+                        Ok(crate::proc::ProcessEvent::Continue) => continue,
                     }
                 }
                 if removed {

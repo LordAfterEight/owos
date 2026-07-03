@@ -13,7 +13,7 @@ impl crate::proc::Process for MemTracker {
             name: "Memory Tracker",
             status: crate::proc::ProcessStatus::Running,
             tick_count: 0,
-            report_every: 1_000_000,
+            report_every: 100_000,
         })
     }
 
@@ -49,10 +49,11 @@ impl crate::proc::Process for MemTracker {
             let free  = crate::mem::ALLOCATOR.free();
 
             let text = alloc::format!(
-                "Total: {:.3} MiB | Used: {:.3} MiB | Free: {:.3} MiB",
+                "Total: {:.3} MiB | Used: {:.3} MiB | Free: {:.3} MiB | Free nodes: {}",
                 total as f32 / 1024.0 / 1024.0,
                 used  as f32 / 1024.0 / 1024.0,
-                free  as f32 / 1024.0 / 1024.0
+                free  as f32 / 1024.0 / 1024.0,
+                crate::mem::ALLOCATOR.free_node_count()
             );
 
             let text_width = crate::kui::kdraw::text_length(&text, &crate::kui::kfont::KODEMONO_REGULAR, 15.0) as u32;
