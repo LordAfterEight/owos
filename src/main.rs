@@ -107,18 +107,13 @@ extern "C" fn start() -> ! {
     owos::kui::ktitledwindow(&alloc::format!("OwOS v{}", env!("CARGO_PKG_VERSION")));
     let mut scheduler = owos::proc::csched::CooperativeScheduler::init();
 
-    scheduler.add_process::<owos::apps::proctracker::ProcessTracker>();
     scheduler.add_process::<owos::apps::memtracker::MemTracker>();
-    scheduler.add_process::<owos::apps::filesystem::OfsDriver>();
+    scheduler.add_process::<owos::drivers::ps2::Ps2Driver>();
+    scheduler.add_process::<owos::apps::shell::Shell>();
+
     match scheduler.start() {
         Ok(()) => unreachable!("start() only returns on error"),
-        Err(e) => owos::println!("scheduler exited: {:?}", e),
-    }
-
-    loop {
-        unsafe {
-            core::arch::asm!("cli; hlt;");
-        }
+        Err(e) => panic!("scheduler exited: {:?}", e),
     }
 }
 

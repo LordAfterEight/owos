@@ -19,6 +19,7 @@ pub trait Process {
     fn set_status(&mut self, status: ProcessStatus);
 
     fn receive(&mut self, data: IpcData) -> Result<(), IpcReceiveError>;
+    fn bind(&mut self, subscriber: u32);
 }
 
 #[derive(PartialEq, Eq)]
@@ -72,4 +73,12 @@ pub fn create_ipc_task(sender_pid: u32, target_pid: u32, data: IpcData) {
         .push_back(crate::proc::csched::SchedulerTask::Send(
             sender_pid, target_pid, data,
         ))
+}
+
+pub fn create_binding_task(sender_pid: u32, target_pid: u32) {
+    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+        .lock()
+        .push_back(
+            crate::proc::csched::SchedulerTask::ConnectTo(sender_pid, target_pid)
+        );
 }

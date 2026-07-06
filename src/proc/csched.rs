@@ -130,6 +130,20 @@ impl CooperativeScheduler {
                             );
                         }
                     }
+                },
+                SchedulerTask::ConnectTo(sender_pid, target_pid) => {
+                    let entry = match self.procs.iter_mut().find(|p| p.pid() == target_pid) {
+                        Some(entry) => entry,
+                        None => {
+                            _ = self.procs[sender_pid as usize].receive(
+                                crate::proc::IpcData::SendError(alloc::format!(
+                                    "Invalid PID: {target_pid}"
+                                )),
+                            );
+                            continue;
+                        }
+                    };
+                    entry.bind(sender_pid);
                 }
             }
         }
@@ -220,4 +234,13 @@ pub enum SchedulerTask {
         >,
     ),
     Send(u32, u32, crate::proc::IpcData),
+    /// This task carries the PID of the process that created this task, and
+    /// the PID of the target process
+    /// 
+    /// This can for example be used for processes subscribing to other processes.
+    /// A concrete example would be the PS/2 driver and a shell. The PS/2 process
+    /// sends its input to all subscribers via IPC, but in order to do that, it
+    /// needs to know the PIDs of its subscribers. This is what this `SchedulerTask`
+    /// is for.
+    ConnectTo(u32, u32),
 }

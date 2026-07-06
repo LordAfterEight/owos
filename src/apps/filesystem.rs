@@ -72,31 +72,7 @@ impl crate::proc::Process for OfsDriver {
         if let Some(event) = self.closing_procedure() {
             return Ok(event);
         }
-        let pid = 0;
         self.ticks += 1;
-
-        if self.ticks.is_multiple_of(10_000_000) {
-            crate::klog::log(
-                self.name,
-                &alloc::format!("Sending IPC data (Message) to PID {}", pid),
-                crate::klog::MessageType::Info,
-            );
-            crate::proc::create_ipc_task(
-                self.pid,
-                pid,
-                crate::proc::IpcData::Message("Testing Payload".to_string()),
-            );
-            crate::klog::log(
-                self.name,
-                &alloc::format!("Sending IPC data (Payload) to PID {}", pid),
-                crate::klog::MessageType::Info,
-            );
-            crate::proc::create_ipc_task(
-                self.pid,
-                pid,
-                crate::proc::IpcData::Payload(OfsDriver::new()),
-            );
-        }
 
         Ok(crate::proc::ProcessEvent::Yielded)
     }
@@ -106,15 +82,7 @@ impl crate::proc::Process for OfsDriver {
     }
 
     fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
-        let msg_type = match data {
-            crate::proc::IpcData::SendError(_) => crate::klog::MessageType::Error,
-            _ => crate::klog::MessageType::Info
-        };
-        crate::klog::log(
-            self.name,
-            &alloc::format!("Received IPC data: {:?}", data),
-            msg_type
-        );
-        Ok(())
+        Err(crate::proc::IpcReceiveError::Message("Not expecting any data"))
     }
+    fn bind(&mut self, subscriber: u32) {}
 }

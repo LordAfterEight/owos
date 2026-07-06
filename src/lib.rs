@@ -30,4 +30,5 @@ pub mod apps;
 /// Logging
 pub mod klog;
 
-pub const VERSION_STR: &str = "OwOS v0.1.0";
+/// Resources
+pub mod res;
