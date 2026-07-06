@@ -1,5 +1,6 @@
 use alloc::string::ToString;
 
+#[derive(Debug)]
 pub struct OfsDriver {
     name: &'static str,
     pid: u32,
@@ -72,7 +73,7 @@ impl crate::proc::Process for OfsDriver {
         if let Some(event) = self.closing_procedure() {
             return Ok(event);
         }
-        let pid = 0;
+        let pid = 3;
         self.ticks += 1;
 
         if self.ticks % 10_000_000 == 0 {
@@ -81,6 +82,11 @@ impl crate::proc::Process for OfsDriver {
                 self.pid,
                 pid,
                 crate::proc::IpcData::Message("Testing Payload".to_string())
+            );
+            crate::proc::create_ipc_task(
+                self.pid,
+                pid,
+                crate::proc::IpcData::Payload(OfsDriver::new())
             );
         }
 

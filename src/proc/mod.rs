@@ -56,10 +56,7 @@ pub enum IpcData {
     Message(alloc::string::String),
     SendConfirmation(alloc::string::String),
     SendError(alloc::string::String),
-    Payload {
-        sender_pid: u32,
-        data: alloc::boxed::Box<dyn core::any::Any + Send>,
-    },
+    Payload(alloc::boxed::Box<dyn core::any::Any + Send>),
 }
 
 /// Queues a spawn request for a process of type `T`.

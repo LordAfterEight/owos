@@ -100,10 +100,17 @@ impl crate::proc::Process for ProcessTracker {
     fn set_status(&mut self, status: crate::proc::ProcessStatus) {
         self.status = status;
     }
-    
+
     fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
         match data {
-            _ => return Err(crate::proc::IpcReceiveError::Message("Unexpected package"))
+            crate::proc::IpcData::Payload(data) => {
+                crate::println!(
+                    "[{}]: Received Payload: {:#?}",
+                    self.name,
+                    data.downcast::<crate::apps::filesystem::OfsDriver>()
+                );
+            }
+            _ => return Err(crate::proc::IpcReceiveError::Message("Unexpected package")),
         }
         Ok(())
     }

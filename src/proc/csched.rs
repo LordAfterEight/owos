@@ -94,17 +94,31 @@ impl CooperativeScheduler {
                     self.procs.push(process);
                 }
                 SchedulerTask::Send(sender_pid, target_pid, data) => {
-                    let entry = self.procs.iter_mut()
-                        .find(|p| p.pid() == target_pid)
-                        .unwrap();
+                    let entry = match self.procs.iter_mut().find(|p| p.pid() == target_pid) {
+                        Some(entry) => entry,
+                        None => {
+                            _ = self.procs[sender_pid as usize].receive(
+                                crate::proc::IpcData::SendError(alloc::format!(
+                                    "Invalid PID: {target_pid}"
+                                )),
+                            );
+                            continue;
+                        }
+                    };
                     match entry.receive(data) {
                         Ok(_) => {
-                            let _ = self.procs[sender_pid as usize]
-                                .receive(crate::proc::IpcData::SendConfirmation("Payload sent successfully".to_string()));
+                            let _ = self.procs[sender_pid as usize].receive(
+                                crate::proc::IpcData::SendConfirmation(
+                                    "Payload sent successfully".to_string(),
+                                ),
+                            );
                         }
                         Err(e) => {
-                            let _ = self.procs[sender_pid as usize]
-                                .receive(crate::proc::IpcData::SendError(alloc::format!("Send failed: {e:?}")));
+                            let _ = self.procs[sender_pid as usize].receive(
+                                crate::proc::IpcData::SendError(alloc::format!(
+                                    "Send failed: {e:?}"
+                                )),
+                            );
                         }
                     }
                 }
