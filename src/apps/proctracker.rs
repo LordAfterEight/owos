@@ -72,6 +72,8 @@ impl crate::proc::Process for ProcessTracker {
                         15,
                         0,
                     );
+                    let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
+                    let content = crate::kui::window_content_rect(fb);
                     crate::kui::draw_text(
                         20,
                         65 + i as u32 * 20,
@@ -79,6 +81,10 @@ impl crate::proc::Process for ProcessTracker {
                         &crate::kui::kfont::KODEMONO_BOLD,
                         text,
                         0x55EAD4,
+                        content.x,
+                        content.y,
+                        content.w,
+                        content.h,
                     );
                 } else {
                     crate::println!(

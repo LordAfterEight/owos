@@ -67,13 +67,19 @@ impl crate::proc::Process for MemTracker {
                 15,
                 0
             );
+            let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
+            let clip = crate::kui::framebuffer_rect(fb);
             crate::kui::draw_text(
                 x_pos,
-                10, 
+                10,
                 15.0,
                 &crate::kui::kfont::KODEMONO_REGULAR,
                 &text,
-                0x55EAD4
+                0x55EAD4,
+                clip.x,
+                clip.y,
+                clip.w,
+                clip.h,
             );
         }
         Ok(crate::proc::ProcessEvent::Yielded)

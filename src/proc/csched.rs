@@ -43,9 +43,15 @@ impl CooperativeScheduler {
         self.procs.push(process);
     }
 
+    fn proc_index(&self, pid: u32) -> Option<usize> {
+        self.procs.iter().position(|p| p.pid() == pid)
+    }
+
     pub fn process_tasks(&mut self) {
-        let mut queue = SCHEDULER_COMMAND_QUEUE.lock();
-        while let Some(cmd) = queue.pop_front() {
+        loop {
+            let cmd = SCHEDULER_COMMAND_QUEUE.lock().pop_front();
+            let Some(cmd) = cmd else { break };
+
             match cmd {
                 SchedulerTask::Freeze(pid) => {
                     if let Some(p) = self.procs.iter_mut().find(|p| p.pid() == pid) {
@@ -103,47 +109,51 @@ impl CooperativeScheduler {
                     self.procs.push(process);
                 }
                 SchedulerTask::Send(sender_pid, target_pid, data) => {
-                    let entry = match self.procs.iter_mut().find(|p| p.pid() == target_pid) {
-                        Some(entry) => entry,
-                        None => {
-                            _ = self.procs[sender_pid as usize].receive(
+                    let Some(target_idx) = self.proc_index(target_pid) else {
+                        if let Some(sender_idx) = self.proc_index(sender_pid) {
+                            let _ = self.procs[sender_idx].receive(
                                 crate::proc::IpcData::SendError(alloc::format!(
                                     "Invalid PID: {target_pid}"
                                 )),
                             );
-                            continue;
                         }
+                        continue;
                     };
-                    match entry.receive(data) {
+                    let result = self.procs[target_idx].receive(data);
+                    let Some(sender_idx) = self.proc_index(sender_pid) else {
+                        continue;
+                    };
+                    match result {
                         Ok(_) => {
-                            let _ = self.procs[sender_pid as usize].receive(
-                                crate::proc::IpcData::SendConfirmation(
-                                    "Payload sent successfully".to_string(),
-                                ),
+                            let response = crate::ofs::ipc::take_response()
+                                .unwrap_or_else(|| {
+                                    alloc::string::String::from("ok")
+                                });
+                            let _ = self.procs[sender_idx].receive(
+                                crate::proc::IpcData::SendConfirmation(response),
                             );
                         }
                         Err(e) => {
-                            let _ = self.procs[sender_pid as usize].receive(
+                            let _ = self.procs[sender_idx].receive(
                                 crate::proc::IpcData::SendError(alloc::format!(
                                     "Send failed: {e:?}"
                                 )),
                             );
                         }
                     }
-                },
+                }
                 SchedulerTask::ConnectTo(sender_pid, target_pid) => {
-                    let entry = match self.procs.iter_mut().find(|p| p.pid() == target_pid) {
-                        Some(entry) => entry,
-                        None => {
-                            _ = self.procs[sender_pid as usize].receive(
+                    let Some(target_idx) = self.proc_index(target_pid) else {
+                        if let Some(sender_idx) = self.proc_index(sender_pid) {
+                            let _ = self.procs[sender_idx].receive(
                                 crate::proc::IpcData::SendError(alloc::format!(
                                     "Invalid PID: {target_pid}"
                                 )),
                             );
-                            continue;
                         }
+                        continue;
                     };
-                    entry.bind(sender_pid);
+                    self.procs[target_idx].bind(sender_pid);
                 }
             }
         }

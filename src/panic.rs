@@ -62,12 +62,9 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
     let _width = fb.width as u32;
     let height = fb.height as u32;
 
-    unsafe {
-        core::ptr::write_bytes(fb.base, 0, (fb.pitch * fb.height) as usize);
-    }
-
     owos::kui::ktitledwindow("KERNEL PANIC");
 
+    let content = owos::kui::window_content_rect(fb);
     let message = alloc::format!("{info:#?}");
     owos::kui::draw_text(
         30,
@@ -76,6 +73,10 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
         &owos::kui::kfont::KODEMONO_BOLD,
         &message,
         0xF3C200,
+        content.x,
+        content.y,
+        content.w,
+        content.h,
     );
 
     let trace_top = 275u32;
@@ -101,5 +102,11 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
         &owos::kui::kfont::KODEMONO_REGULAR,
         &trace_text,
         0x55EAD4,
+        content.x,
+        content.y,
+        content.w,
+        content.h,
     );
+
+    owos::kui::present();
 }

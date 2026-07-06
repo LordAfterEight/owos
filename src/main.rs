@@ -100,16 +100,20 @@ extern "C" fn start() -> ! {
     owos::kui::kdraw::GLOBAL_FB.call_once(|| owos::kui::kdraw::SyncFramebuffer(fb));
     owos::println!("Success");
 
+    owos::kui::kdraw::init_backbuffer();
+
     owos::println!("Initializing fonts...");
     owos::kui::kfont::init();
     owos::println!("Done");
 
     owos::kui::ktitledwindow(&alloc::format!("OwOS v{}", env!("CARGO_PKG_VERSION")));
+    owos::kui::present();
     let mut scheduler = owos::proc::csched::CooperativeScheduler::init();
 
     scheduler.add_process::<owos::apps::memtracker::MemTracker>();
     scheduler.add_process::<owos::drivers::ps2::Ps2Driver>();
     scheduler.add_process::<owos::apps::shell::Shell>();
+    scheduler.add_process::<owos::apps::compositor::Compositor>();
 
     match scheduler.start() {
         Ok(()) => unreachable!("start() only returns on error"),

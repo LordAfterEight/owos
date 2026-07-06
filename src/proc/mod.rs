@@ -82,3 +82,21 @@ pub fn create_binding_task(sender_pid: u32, target_pid: u32) {
             crate::proc::csched::SchedulerTask::ConnectTo(sender_pid, target_pid)
         );
 }
+
+pub fn create_kill_task(pid: u32) {
+    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+        .lock()
+        .push_back(crate::proc::csched::SchedulerTask::Kill(pid));
+}
+
+pub fn create_freeze_task(pid: u32) {
+    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+        .lock()
+        .push_back(crate::proc::csched::SchedulerTask::Freeze(pid));
+}
+
+pub fn create_unfreeze_task(pid: u32) {
+    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+        .lock()
+        .push_back(crate::proc::csched::SchedulerTask::Unfreeze(pid));
+}

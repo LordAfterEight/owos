@@ -1,3 +1,5 @@
+pub mod ipc;
+
 pub const FLAG_READ: u8 = 0b1000_0000;
 pub const FLAG_WRTE: u8 = 0b0100_0000;
 pub const FLAG_EXEC: u8 = 0b0010_0000;
@@ -64,6 +66,7 @@ impl DataBlock {
 
 #[derive(Debug)]
 pub struct PlaintextFile {
+    canonical_name: alloc::string::String,
     header: PlaintextFileHeader,
     blocks: alloc::vec::Vec<DataBlock>,
 }
@@ -71,6 +74,7 @@ pub struct PlaintextFile {
 impl PlaintextFile {
     pub fn new(name: &str) -> Result<Self, FileError> {
         Ok(Self {
+            canonical_name: alloc::string::String::from(name),
             header: PlaintextFileHeader::new(name)?,
             blocks: alloc::vec::Vec::new(),
         })
@@ -90,6 +94,10 @@ impl PlaintextFile {
 
     pub fn block_count(&self) -> usize {
         self.blocks.len()
+    }
+
+    pub fn display_name(&self) -> &str {
+        &self.canonical_name
     }
 
     fn check_access(&self, write: bool) -> Result<(), FileIoError> {
