@@ -47,11 +47,6 @@ pub enum IpcReceiveError {
 }
 
 #[derive(Debug)]
-pub enum IpcSendError {
-    UnknownPid(u32),
-}
-
-#[derive(Debug)]
 pub enum IpcData {
     Message(alloc::string::String),
     SendConfirmation(alloc::string::String),
