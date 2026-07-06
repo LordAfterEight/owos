@@ -1,7 +1,4 @@
 use core::arch::asm;
-use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicBool, Ordering};
-use alloc::format;
 
 const MAX_FRAMES: usize = 32;
 
@@ -13,7 +10,7 @@ pub struct StackTrace {
 #[inline(always)]
 unsafe fn read_rbp() -> usize {
     let rbp: usize;
-    asm!("mov {}, rbp", out(reg) rbp);
+    unsafe { asm!("mov {}, rbp", out(reg) rbp) };
     rbp
 }
 
@@ -25,7 +22,7 @@ fn is_canonical(addr: usize) -> bool {
 
 pub unsafe fn walk_stack() -> StackTrace {
     let mut trace = StackTrace { frames: [0; MAX_FRAMES], count: 0 };
-    let mut rbp = read_rbp();
+    let mut rbp = unsafe { read_rbp() };
     let mut prev_rbp = 0usize;
 
     while trace.count < MAX_FRAMES {
@@ -41,7 +38,7 @@ pub unsafe fn walk_stack() -> StackTrace {
             break;
         }
 
-        let return_addr = core::ptr::read(ret_ptr);
+        let return_addr = unsafe { core::ptr::read(ret_ptr) };
         if return_addr == 0 || !is_canonical(return_addr) {
             break;
         }
@@ -50,7 +47,7 @@ pub unsafe fn walk_stack() -> StackTrace {
         trace.count += 1;
 
         prev_rbp = rbp;
-        rbp = core::ptr::read(rbp as *const usize);
+        rbp = unsafe { core::ptr::read(rbp as *const usize) };
     }
 
     trace
@@ -62,7 +59,7 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
     }
 
     let fb = owos::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-    let width = fb.width as u32;
+    let _width = fb.width as u32;
     let height = fb.height as u32;
 
     unsafe {

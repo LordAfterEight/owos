@@ -2,7 +2,6 @@
 #![no_main]
 extern crate alloc;
 
-use alloc::string::ToString;
 use core::any::type_name_of_val;
 mod panic;
 
@@ -99,7 +98,6 @@ extern "C" fn start() -> ! {
     };
     let fb = unsafe { &*fb_ptrs[0] };
     owos::kui::kdraw::GLOBAL_FB.call_once(|| owos::kui::kdraw::SyncFramebuffer(fb));
-    let fb = owos::kui::kdraw::GLOBAL_FB.get().unwrap();
     owos::println!("Success");
 
     owos::println!("Initializing fonts...");
