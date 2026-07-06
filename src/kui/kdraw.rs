@@ -48,7 +48,7 @@ fn draw_glyph(
                     ((color.1 as u32 * alpha) / 255) as u8,
                 );
                 core::ptr::write(
-                    fb.wrapping_add(px_offset + 0),
+                    fb.wrapping_add(px_offset),
                     ((color.2 as u32 * alpha) / 255) as u8,
                 );
             }

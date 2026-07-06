@@ -42,7 +42,7 @@ impl crate::proc::Process for MemTracker {
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
         self.tick_count += 1;
-        if self.tick_count % self.report_every == 0 {
+        if self.tick_count.is_multiple_of(self.report_every) {
             let total = crate::mem::ALLOCATOR.total();
             let used  = crate::mem::ALLOCATOR.used();
             let free  = crate::mem::ALLOCATOR.free();

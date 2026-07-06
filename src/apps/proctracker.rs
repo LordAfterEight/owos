@@ -27,7 +27,7 @@ impl crate::proc::Process for ProcessTracker {
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
         self.tick_count += 1;
-        if self.tick_count % self.report_every == 0 {
+        if self.tick_count.is_multiple_of(self.report_every) {
             let table = crate::proc::registry::PROCESS_TABLE.lock();
             //crate::println!("--- {} processes alive ---", table.len());
             for (i, entry) in table.iter().enumerate() {

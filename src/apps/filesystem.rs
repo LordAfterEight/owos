@@ -76,7 +76,7 @@ impl crate::proc::Process for OfsDriver {
         let pid = 3;
         self.ticks += 1;
 
-        if self.ticks % 10_000_000 == 0 {
+        if self.ticks.is_multiple_of(10_000_000) {
             crate::println!("[{}]: Sending IPC data to PID {}", self.name, pid);
             crate::proc::create_ipc_task(
                 self.pid,

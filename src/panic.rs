@@ -96,7 +96,7 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
 
     owos::kui::draw_text(
         30,
-        trace_top as u32,
+        trace_top,
         12.0,
         &owos::kui::kfont::KODEMONO_REGULAR,
         &trace_text,
