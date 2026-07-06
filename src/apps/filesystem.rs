@@ -66,27 +66,35 @@ impl crate::proc::Process for OfsDriver {
         self.status = status;
     }
 
-    fn on_init(&self) {
-    }
+    fn on_init(&self) {}
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
         if let Some(event) = self.closing_procedure() {
             return Ok(event);
         }
-        let pid = 3;
+        let pid = 0;
         self.ticks += 1;
 
         if self.ticks.is_multiple_of(10_000_000) {
-            crate::println!("[{}]: Sending IPC data to PID {}", self.name, pid);
-            crate::proc::create_ipc_task(
-                self.pid,
-                pid,
-                crate::proc::IpcData::Message("Testing Payload".to_string())
+            crate::klog::log(
+                self.name,
+                &alloc::format!("Sending IPC data (Message) to PID {}", pid),
+                crate::klog::MessageType::Info,
             );
             crate::proc::create_ipc_task(
                 self.pid,
                 pid,
-                crate::proc::IpcData::Payload(OfsDriver::new())
+                crate::proc::IpcData::Message("Testing Payload".to_string()),
+            );
+            crate::klog::log(
+                self.name,
+                &alloc::format!("Sending IPC data (Payload) to PID {}", pid),
+                crate::klog::MessageType::Info,
+            );
+            crate::proc::create_ipc_task(
+                self.pid,
+                pid,
+                crate::proc::IpcData::Payload(OfsDriver::new()),
             );
         }
 
@@ -98,7 +106,15 @@ impl crate::proc::Process for OfsDriver {
     }
 
     fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
-        crate::println!("[{}]: Received IPC Data: {data:?}", self.name);
+        let msg_type = match data {
+            crate::proc::IpcData::SendError(_) => crate::klog::MessageType::Error,
+            _ => crate::klog::MessageType::Info
+        };
+        crate::klog::log(
+            self.name,
+            &alloc::format!("Received IPC data: {:?}", data),
+            msg_type
+        );
         Ok(())
     }
 }

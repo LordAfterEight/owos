@@ -37,8 +37,7 @@ impl crate::proc::Process for MemTracker {
         self.status = status
     }
 
-    fn on_init(&self) {
-    }
+    fn on_init(&self) {}
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
         self.tick_count += 1;

@@ -110,7 +110,6 @@ extern "C" fn start() -> ! {
     scheduler.add_process::<owos::apps::proctracker::ProcessTracker>();
     scheduler.add_process::<owos::apps::memtracker::MemTracker>();
     scheduler.add_process::<owos::apps::filesystem::OfsDriver>();
-
     match scheduler.start() {
         Ok(()) => unreachable!("start() only returns on error"),
         Err(e) => owos::println!("scheduler exited: {:?}", e),

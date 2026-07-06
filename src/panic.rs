@@ -73,9 +73,9 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
         30,
         75,
         12.0,
-        &owos::kui::kfont::KODEMONO_REGULAR,
+        &owos::kui::kfont::KODEMONO_BOLD,
         &message,
-        0xF3E600,
+        0xF3C200,
     );
 
     let trace_top = 275u32;

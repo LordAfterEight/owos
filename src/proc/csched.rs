@@ -21,11 +21,14 @@ impl CooperativeScheduler {
         process.set_pid(self.pid_counter);
         self.pid_counter += 1;
 
-        crate::println!(
-            "[{}]: Initialized process: {} | PID {}",
-            core::any::type_name_of_val(&self),
-            process.name(),
-            process.pid()
+        crate::klog::log(
+            "Cooperative Scheduler",
+            &alloc::format!(
+                "Initialized process: {} | PID {}",
+                process.name(),
+                process.pid()
+            ),
+            crate::klog::MessageType::Info
         );
 
         crate::proc::registry::PROCESS_TABLE
@@ -56,17 +59,20 @@ impl CooperativeScheduler {
                 }
                 SchedulerTask::Kill(pid) => {
                     if let Some(idx) = self.procs.iter().position(|p| p.pid() == pid) {
-                        let proc = self.procs.remove(idx);
+                        let process = self.procs.remove(idx);
                         crate::proc::registry::PROCESS_TABLE
                             .lock()
                             .retain(|e| e.pid != pid);
-                        crate::println!(
-                            "[{}]: Killing process: {} | PID {}",
-                            core::any::type_name_of_val(&self),
-                            proc.name(),
-                            proc.pid()
+                        crate::klog::log(
+                            "Cooperative Scheduler",
+                            &alloc::format!(
+                                "Killing process: {} | PID {}",
+                                process.name(),
+                                process.pid()
+                            ),
+                            crate::klog::MessageType::Info
                         );
-                        proc.on_uninit();
+                        process.on_uninit();
                     }
                 }
                 SchedulerTask::Spawn(ctor) => {
@@ -75,11 +81,14 @@ impl CooperativeScheduler {
                     process.set_pid(self.pid_counter);
                     self.pid_counter += 1;
 
-                    crate::println!(
-                        "[{}]: Spawned process: {} | PID {}",
-                        core::any::type_name_of_val(&self),
-                        process.name(),
-                        process.pid()
+                    crate::klog::log(
+                        "Cooperative Scheduler",
+                        &alloc::format!(
+                            "Spawned process: {} | PID {}",
+                            process.name(),
+                            process.pid()
+                        ),
+                        crate::klog::MessageType::Info
                     );
 
                     crate::proc::registry::PROCESS_TABLE.lock().push(
@@ -144,7 +153,11 @@ impl CooperativeScheduler {
                                 .lock()
                                 .retain(|e| e.pid != proc.pid());
                             proc.on_uninit();
-                            crate::println!("Process exited with error {:?}", err);
+                            crate::klog::log(
+                                "Cooperative Scheduler",
+                                &alloc::format!("Process exited with error {:?}", err),
+                                crate::klog::MessageType::Error
+                            );
                             break;
                         }
                         Ok(crate::proc::ProcessEvent::Yielded) => break,
@@ -153,11 +166,14 @@ impl CooperativeScheduler {
                             crate::proc::registry::PROCESS_TABLE
                                 .lock()
                                 .retain(|e| e.pid != proc.pid());
-                            crate::println!(
-                                "[{}]: Process closed: {} | PID {}",
-                                core::any::type_name_of_val(&self),
-                                proc.name(),
-                                proc.pid()
+                            crate::klog::log(
+                                "Cooperative Scheduler",
+                                &alloc::format!(
+                                    "Process closed: {} | PID {}",
+                                    proc.name(),
+                                    proc.pid()
+                                ),
+                                crate::klog::MessageType::Error
                             );
                             proc.on_uninit();
                             removed = true;

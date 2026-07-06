@@ -59,18 +59,24 @@ impl crate::proc::Process for ProcessTracker {
                 self.current_amount = i as u32 + 1;
             }
             if self.current_amount < self.last_amount {
-                crate::println!(
-                    "[{}]: One or more processes closed. {} active",
-                    core::any::type_name_of_val(&self),
-                    self.current_amount
+                crate::klog::log(
+                    self.name,
+                    &alloc::format!(
+                        "One or more processes closed. {} active",
+                        self.current_amount
+                    ),
+                    crate::klog::MessageType::Info
                 );
                 crate::kui::ktitledwindow("Process Tracker");
             }
             if self.current_amount > self.last_amount {
-                crate::println!(
-                    "[{}]: Registered {} new process(es)",
-                    core::any::type_name_of_val(&self),
-                    self.current_amount
+                crate::klog::log(
+                    self.name,
+                    &alloc::format!(
+                        "Registered {} new process(es)",
+                        self.current_amount
+                    ),
+                    crate::klog::MessageType::Info
                 );
             }
             self.last_amount = self.current_amount;
@@ -78,9 +84,7 @@ impl crate::proc::Process for ProcessTracker {
         Ok(crate::proc::ProcessEvent::Yielded)
     }
 
-    fn on_uninit(self: alloc::boxed::Box<Self>) {
-        crate::println!("[{}] uninit", self.name);
-    }
+    fn on_uninit(self: alloc::boxed::Box<Self>) {}
 
     fn pid(&self) -> u32 {
         self.pid
@@ -104,10 +108,13 @@ impl crate::proc::Process for ProcessTracker {
     fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
         match data {
             crate::proc::IpcData::Payload(data) => {
-                crate::println!(
-                    "[{}]: Received Payload: {:#?}",
+                crate::klog::log(
                     self.name,
-                    data.downcast::<crate::apps::filesystem::OfsDriver>()
+                    &alloc::format!(
+                        "Received Payload: {:#?}",
+                        data.downcast::<crate::apps::filesystem::OfsDriver>()
+                    ),
+                    crate::klog::MessageType::Info
                 );
             }
             _ => return Err(crate::proc::IpcReceiveError::Message("Unexpected package")),
