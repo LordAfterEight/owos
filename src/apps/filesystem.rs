@@ -1,3 +1,5 @@
+use alloc::string::ToString;
+
 pub struct OfsDriver {
     name: &'static str,
     pid: u32,
@@ -8,10 +10,28 @@ pub struct OfsDriver {
     closing: bool,
 }
 
+impl OfsDriver {
+    fn closing_procedure(&mut self) -> Option<crate::proc::ProcessEvent> {
+        if self.closing {
+            for _ in 0..1000 {
+                if self.files.pop().is_none() {
+                    break;
+                }
+            }
+            if self.files.is_empty() {
+                return Some(crate::proc::ProcessEvent::Closed(0));
+            }
+
+            return Some(crate::proc::ProcessEvent::Yielded);
+        }
+        None
+    }
+}
+
 impl crate::proc::Process for OfsDriver {
     fn new() -> alloc::boxed::Box<Self> {
         alloc::boxed::Box::new(Self {
-            name: "OFS File System Driver",
+            name: "OFS Driver",
             pid: 0,
             status: crate::proc::ProcessStatus::Running,
 
@@ -45,51 +65,22 @@ impl crate::proc::Process for OfsDriver {
         self.status = status;
     }
 
-    fn on_init(&self) {}
+    fn on_init(&self) {
+    }
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
-        if self.closing {
-            for _ in 0..1000 {
-                if self.files.pop().is_none() {
-                    break;
-                }
-            }
-            if self.files.is_empty() {
-                return Ok(crate::proc::ProcessEvent::Closed(0));
-            }
-
-            return Ok(crate::proc::ProcessEvent::Yielded);
+        if let Some(event) = self.closing_procedure() {
+            return Ok(event);
         }
-
+        let pid = 0;
         self.ticks += 1;
 
-        if self.ticks % 5 == 0 {
-            let mut file = crate::ofs::PlaintextFile::new("TestFile.txt").unwrap();
-            file.write_bytes("Hello World!".as_bytes()).unwrap();
-            self.files.push(file);
-        }
-
-        if self.files.len() == 15_000_000 {
-            self.closing = true;
-        }
-
-        if self.ticks % 100_000 == 0 {
-            let text = &alloc::format!("Tracking {} files", self.files.len());
-            crate::kui::kdraw::draw_rect(
-                20,
-                200,
-                crate::kui::kdraw::text_length(text, &crate::kui::kfont::ICELAND, 20.0) as u32,
-                20,
-                10,
-                0,
-            );
-            crate::kui::kdraw::draw_text(
-                20,
-                200,
-                20.0,
-                &crate::kui::kfont::ICELAND,
-                text,
-                0x55EAD4,
+        if self.ticks % 10_000_000 == 0 {
+            crate::println!("[{}]: Sending IPC data to PID {}", self.name, pid);
+            crate::proc::create_ipc_task(
+                self.pid,
+                pid,
+                crate::proc::IpcData::Message("Testing Payload".to_string())
             );
         }
 
@@ -97,7 +88,11 @@ impl crate::proc::Process for OfsDriver {
     }
 
     fn on_uninit(mut self: alloc::boxed::Box<Self>) {
-        crate::proc::create_spawn_task::<OfsDriver>();
         self.files.clear();
+    }
+
+    fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
+        crate::println!("[{}]: Received IPC Data: {data:?}", self.name);
+        Ok(())
     }
 }

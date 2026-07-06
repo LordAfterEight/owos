@@ -81,4 +81,8 @@ impl crate::proc::Process for MemTracker {
     }
 
     fn on_uninit(self: alloc::boxed::Box<Self>) {}
+    
+    fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
+        Ok(())
+    }
 }

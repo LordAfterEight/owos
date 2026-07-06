@@ -1,3 +1,5 @@
+use alloc::string::ToString;
+
 pub static SCHEDULER_COMMAND_QUEUE: spin::Mutex<alloc::collections::VecDeque<SchedulerTask>> =
     spin::Mutex::new(alloc::collections::VecDeque::new());
 
@@ -66,7 +68,7 @@ impl CooperativeScheduler {
                         );
                         proc.on_uninit();
                     }
-                },
+                }
                 SchedulerTask::Spawn(ctor) => {
                     let mut process = ctor();
 
@@ -80,16 +82,31 @@ impl CooperativeScheduler {
                         process.pid()
                     );
 
-                    crate::proc::registry::PROCESS_TABLE
-                        .lock()
-                        .push(crate::proc::registry::ProcTableEntry {
+                    crate::proc::registry::PROCESS_TABLE.lock().push(
+                        crate::proc::registry::ProcTableEntry {
                             pid: process.pid(),
                             name: process.name(),
                             status: crate::proc::ProcessStatus::Running,
-                        });
+                        },
+                    );
 
                     process.on_init();
                     self.procs.push(process);
+                }
+                SchedulerTask::Send(sender_pid, target_pid, data) => {
+                    let entry = self.procs.iter_mut()
+                        .find(|p| p.pid() == target_pid)
+                        .unwrap();
+                    match entry.receive(data) {
+                        Ok(_) => {
+                            let _ = self.procs[sender_pid as usize]
+                                .receive(crate::proc::IpcData::SendConfirmation("Payload sent successfully".to_string()));
+                        }
+                        Err(e) => {
+                            let _ = self.procs[sender_pid as usize]
+                                .receive(crate::proc::IpcData::SendError(alloc::format!("Send failed: {e:?}")));
+                        }
+                    }
                 }
             }
         }
@@ -167,5 +184,10 @@ pub enum SchedulerTask {
     Unfreeze(u32),
     Freeze(u32),
     Kill(u32),
-    Spawn(alloc::boxed::Box<dyn FnOnce() -> alloc::boxed::Box<dyn crate::proc::Process> + Send + 'static>),
+    Spawn(
+        alloc::boxed::Box<
+            dyn FnOnce() -> alloc::boxed::Box<dyn crate::proc::Process> + Send + 'static,
+        >,
+    ),
+    Send(u32, u32, crate::proc::IpcData),
 }

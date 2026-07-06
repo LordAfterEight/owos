@@ -5,6 +5,6 @@ qemu-system-x86_64 \
     -m 8G \
     -nodefaults \
     -vga virtio \
-    -smp 4 \
+    -smp 12 \
     -accel tcg,tb-size=512 \
     # -enable-kvm -cpu host -machine q35,accel=kvm
