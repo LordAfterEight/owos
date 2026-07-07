@@ -3,6 +3,9 @@ name = "owos"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+autotest-cc = []
+
 # Source files live at the repo root rather than src/,
 # so both targets need explicit paths.
 [[bin]]

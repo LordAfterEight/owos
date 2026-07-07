@@ -1,5 +1,3 @@
-use alloc::string::ToString;
-
 pub static SCHEDULER_COMMAND_QUEUE: spin::Mutex<alloc::collections::VecDeque<SchedulerTask>> =
     spin::Mutex::new(alloc::collections::VecDeque::new());
 
@@ -78,11 +76,13 @@ impl CooperativeScheduler {
                             ),
                             crate::klog::MessageType::Info
                         );
+                        crate::kui::window::WINDOW_MANAGER.lock().destroy_by_owner(pid);
                         process.on_uninit();
                     }
                 }
-                SchedulerTask::Spawn(ctor) => {
+                SchedulerTask::Spawn(ctor, args) => {
                     let mut process = ctor();
+                    process.apply_spawn_args(&args);
 
                     process.set_pid(self.pid_counter);
                     self.pid_counter += 1;
@@ -161,6 +161,9 @@ impl CooperativeScheduler {
 
     pub fn start(&mut self) -> Result<(), SchedulerError<crate::proc::ProcessError>> {
         loop {
+            crate::arch::enable_interrupts();
+            crate::time::update();
+            crate::arch::faults::drain_to_shell();
             self.process_tasks();
             let mut i = 0;
             while i < self.procs.len() {
@@ -173,9 +176,11 @@ impl CooperativeScheduler {
                     match self.procs[i].on_tick() {
                         Err(err) => {
                             let proc = self.procs.remove(i);
+                            let pid = proc.pid();
                             crate::proc::registry::PROCESS_TABLE
                                 .lock()
-                                .retain(|e| e.pid != proc.pid());
+                                .retain(|e| e.pid != pid);
+                            crate::kui::window::WINDOW_MANAGER.lock().destroy_by_owner(pid);
                             proc.on_uninit();
                             crate::klog::log(
                                 "Cooperative Scheduler",
@@ -187,18 +192,20 @@ impl CooperativeScheduler {
                         Ok(crate::proc::ProcessEvent::Yielded) => break,
                         Ok(crate::proc::ProcessEvent::Closed(_code)) => {
                             let proc = self.procs.remove(i);
+                            let pid = proc.pid();
                             crate::proc::registry::PROCESS_TABLE
                                 .lock()
-                                .retain(|e| e.pid != proc.pid());
+                                .retain(|e| e.pid != pid);
                             crate::klog::log(
                                 "Cooperative Scheduler",
                                 &alloc::format!(
                                     "Process closed: {} | PID {}",
                                     proc.name(),
-                                    proc.pid()
+                                    pid
                                 ),
                                 crate::klog::MessageType::Error
                             );
+                            crate::kui::window::WINDOW_MANAGER.lock().destroy_by_owner(pid);
                             proc.on_uninit();
                             removed = true;
                             break;
@@ -242,6 +249,7 @@ pub enum SchedulerTask {
         alloc::boxed::Box<
             dyn FnOnce() -> alloc::boxed::Box<dyn crate::proc::Process> + Send + 'static,
         >,
+        alloc::vec::Vec<alloc::string::String>,
     ),
     Send(u32, u32, crate::proc::IpcData),
     /// This task carries the PID of the process that created this task, and

@@ -1,5 +1,6 @@
 pub mod csched;
 pub mod registry;
+pub mod spawn;
 
 pub trait Process {
     fn new() -> alloc::boxed::Box<Self>
@@ -20,6 +21,8 @@ pub trait Process {
 
     fn receive(&mut self, data: IpcData) -> Result<(), IpcReceiveError>;
     fn bind(&mut self, subscriber: u32);
+
+    fn apply_spawn_args(&mut self, _args: &[alloc::string::String]) {}
 }
 
 #[derive(PartialEq, Eq)]
@@ -59,11 +62,14 @@ pub enum IpcData {
 ///
 /// `T` must implement `Process + Send + 'static`.
 /// The process will be spawned the next time the scheduler drains its command queue.
-pub fn create_spawn_task<T: Process + Send + 'static>() {
+pub fn create_spawn_task<T: Process + Send + 'static>(
+    args: alloc::vec::Vec<alloc::string::String>,
+) {
     crate::proc::csched::SCHEDULER_COMMAND_QUEUE
         .lock()
         .push_back(crate::proc::csched::SchedulerTask::Spawn(
             alloc::boxed::Box::new(|| <T as crate::proc::Process>::new()),
+            args,
         ));
 }
 

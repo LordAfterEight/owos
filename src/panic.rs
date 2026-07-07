@@ -59,27 +59,36 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
     }
 
     let fb = owos::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-    let _width = fb.width as u32;
     let height = fb.height as u32;
 
-    owos::kui::ktitledwindow("KERNEL PANIC");
+    // Panic bypasses the scheduler; create a window synchronously (owner_pid 0 = kernel).
+    let frame = owos::kui::default_shell_frame(fb);
+    let (handle, content) = owos::kui::window::WINDOW_MANAGER
+        .lock()
+        .create(
+            0,
+            alloc::string::String::from("KERNEL PANIC"),
+            frame,
+        )
+        .expect("panic window");
 
-    let content = owos::kui::window_content_rect(fb);
     let message = alloc::format!("{info:#?}");
-    owos::kui::draw_text(
-        30,
-        75,
+    let _ = owos::kui::draw_text_in_window(
+        handle,
+        0,
+        20,
+        20,
         12.0,
         &owos::kui::kfont::KODEMONO_BOLD,
         &message,
-        0xF3C200,
+        owos::kui::PALETTE_AMBER,
         content.x,
         content.y,
         content.w,
         content.h,
     );
 
-    let trace_top = 275u32;
+    let trace_top = 220u32;
     let line_height = 18u32;
     let max_visible = height.saturating_sub(trace_top + 10) / line_height;
     let visible = trace.count.min(max_visible as usize);
@@ -95,18 +104,21 @@ pub fn draw_panic_screen(info: &core::panic::PanicInfo, trace: &StackTrace) {
         ));
     }
 
-    owos::kui::draw_text(
-        30,
+    let _ = owos::kui::draw_text_in_window(
+        handle,
+        0,
+        20,
         trace_top,
         12.0,
         &owos::kui::kfont::KODEMONO_REGULAR,
         &trace_text,
-        0x55EAD4,
+        owos::kui::PALETTE_CYAN,
         content.x,
         content.y,
         content.w,
         content.h,
     );
 
-    owos::kui::present();
+    owos::kui::window::WINDOW_MANAGER.lock().composite(0, 0);
+    owos::kui::present_emergency();
 }

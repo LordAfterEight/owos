@@ -19,7 +19,6 @@ pub struct Shell {
     pid: u32,
     status: crate::proc::ProcessStatus,
 
-    ticks: u64,
     input_buffer: alloc::vec::Vec<char>,
     lines: alloc::collections::VecDeque<ShellLine>,
     history: alloc::collections::VecDeque<alloc::string::String>,
@@ -27,7 +26,12 @@ pub struct Shell {
     history_index: Option<usize>,
     history_draft: alloc::vec::Vec<char>,
     prompt_width: u32,
+    cursor_visible: bool,
+    cursor_blink_last: u64,
     needs_initial_draw: bool,
+    needs_window: bool,
+    window: Option<crate::kui::WindowHandle>,
+    content: Option<crate::kui::WindowContentRect>,
     held_allocs: alloc::vec::Vec<alloc::vec::Vec<u8>>,
 }
 
@@ -38,7 +42,6 @@ impl crate::proc::Process for Shell {
             pid: 0,
             status: crate::proc::ProcessStatus::Running,
 
-            ticks: 0,
             input_buffer: alloc::vec::Vec::new(),
             lines: alloc::collections::VecDeque::new(),
             history: alloc::collections::VecDeque::new(),
@@ -46,7 +49,12 @@ impl crate::proc::Process for Shell {
             history_index: None,
             history_draft: alloc::vec::Vec::new(),
             prompt_width: 0,
+            cursor_visible: true,
+            cursor_blink_last: 0,
             needs_initial_draw: true,
+            needs_window: true,
+            window: None,
+            content: None,
             held_allocs: alloc::vec::Vec::new(),
         })
     }
@@ -69,7 +77,19 @@ impl crate::proc::Process for Shell {
         self.status = status
     }
     fn on_init(&self) {
-        crate::kui::ktitledwindow("Shell");
+        let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
+        let frame = crate::kui::default_shell_frame(fb);
+        crate::kui::compositor_ipc::request(
+            self.pid,
+            crate::kui::compositor_ipc::CompositorRequest::CreateWindow {
+                owner_pid: self.pid,
+                title: alloc::string::String::from("Shell"),
+                x: frame.x,
+                y: frame.y,
+                w: frame.w,
+                h: frame.h,
+            },
+        );
         if let Some(ps2_pid) = crate::proc::registry::PROCESS_TABLE
             .lock()
             .iter()
@@ -80,25 +100,111 @@ impl crate::proc::Process for Shell {
         }
     }
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
+        if self.needs_window {
+            return Ok(crate::proc::ProcessEvent::Yielded);
+        }
         if self.needs_initial_draw {
             self.needs_initial_draw = false;
             self.redraw(RedrawScope::Full);
         }
-        self.ticks += 1;
+        if self.is_input_focused() {
+            let now = crate::time::monotonic_ms();
+            if now.saturating_sub(self.cursor_blink_last) >= Self::CURSOR_BLINK_TICKS {
+                self.cursor_blink_last = now;
+                self.cursor_visible = !self.cursor_visible;
+                self.redraw(RedrawScope::InputLine);
+            }
+        }
         Ok(crate::proc::ProcessEvent::Yielded)
     }
     fn on_uninit(self: alloc::boxed::Box<Self>) {}
     fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
         match data {
             crate::proc::IpcData::SendConfirmation(msg) => {
-                self.push_ofs_response(msg);
-                self.redraw(RedrawScope::Full);
+                if let Some(crate::kui::compositor_ipc::CompositorReply::WindowCreated {
+                    handle,
+                    content,
+                }) = crate::kui::compositor_ipc::parse_reply(&msg)
+                {
+                    self.window = Some(handle);
+                    self.content = Some(content);
+                    self.needs_window = false;
+                    self.needs_initial_draw = true;
+                    crate::kui::compositor_ipc::request(
+                        self.pid,
+                        crate::kui::compositor_ipc::CompositorRequest::FocusWindow {
+                            requester_pid: self.pid,
+                            handle,
+                        },
+                    );
+                } else if !crate::kui::compositor_ipc::is_compositor_reply(&msg) {
+                    self.push_ofs_response(msg);
+                    self.redraw(RedrawScope::Full);
+                }
             }
             crate::proc::IpcData::SendError(err) => {
                 self.push_output(alloc::format!("ipc error: {err}"));
                 self.redraw(RedrawScope::Full);
             }
             crate::proc::IpcData::Payload(payload) => {
+                if payload.is::<crate::runtime::RunComplete>() {
+                    let result = payload
+                        .downcast::<crate::runtime::RunComplete>()
+                        .unwrap();
+                    if let Some(err) = &result.error {
+                        self.push_output(err.clone());
+                    } else {
+                        if !result.output.is_empty() {
+                            for line in result.output.lines() {
+                                self.push_output(alloc::string::String::from(line));
+                            }
+                        }
+                        self.push_output(alloc::format!("exit code: {}", result.exit_code));
+                    }
+                    self.redraw(RedrawScope::Full);
+                    return Ok(());
+                }
+
+                if payload.is::<crate::arch::faults::FaultReport>() {
+                    let report = payload
+                        .downcast::<crate::arch::faults::FaultReport>()
+                        .unwrap();
+                    if let (Some(addr), Some(code)) = (report.fault_addr, report.error_code) {
+                        self.push_output(alloc::format!(
+                            "[fault] {} at rip={:#x} addr={:#x} err={:#x}",
+                            report.name,
+                            report.rip,
+                            addr,
+                            code
+                        ));
+                    } else if let Some(code) = report.error_code {
+                        self.push_output(alloc::format!(
+                            "[fault] {} at rip={:#x} err={:#x}",
+                            report.name,
+                            report.rip,
+                            code
+                        ));
+                    } else if let Some(addr) = report.fault_addr {
+                        self.push_output(alloc::format!(
+                            "[fault] {} at rip={:#x} addr={:#x}",
+                            report.name,
+                            report.rip,
+                            addr
+                        ));
+                    } else {
+                        self.push_output(alloc::format!(
+                            "[fault] {} at rip={:#x}",
+                            report.name,
+                            report.rip
+                        ));
+                    }
+                    self.redraw(RedrawScope::Full);
+                    return Ok(());
+                }
+
+                if self.window.is_none() {
+                    return Ok(());
+                }
                 let c = payload.downcast::<char>().unwrap();
                 let visible = self.visible_line_count();
                 let mut scope = RedrawScope::Full;
@@ -181,6 +287,9 @@ impl crate::proc::Process for Shell {
                 } else if scope == RedrawScope::InputLine && self.scroll_offset > 0 {
                     scope = RedrawScope::Skip;
                 }
+                if scope == RedrawScope::InputLine || self.history_index.is_some() {
+                    self.show_cursor();
+                }
                 self.redraw(scope);
             }
             _ => return Err(crate::proc::IpcReceiveError::Message("Wrong package type")),
@@ -205,15 +314,18 @@ impl Shell {
     const FONT_SIZE: f32 = 20.0;
     const PROMPT_INPUT: &'static str = "$HLL < ";
     const PROMPT_OUTPUT: &'static str = "$HLL > ";
-    const PROMPT_COLOR: u32 = 0xF3C200;
-    const INPUT_TEXT_COLOR: u32 = 0x55EAD4;
-    const OUTPUT_TEXT_COLOR: u32 = 0x9BE8FF;
-    const ERROR_TEXT_COLOR: u32 = 0xF38020;
-    const MUTED_TEXT_COLOR: u32 = 0x5A9EAA;
+    const PROMPT_COLOR: u32 = crate::kui::PALETTE_AMBER;
+    const INPUT_TEXT_COLOR: u32 = crate::kui::PALETTE_CYAN;
+    const OUTPUT_TEXT_COLOR: u32 = crate::kui::PALETTE_LIGHT_CYAN;
+    const ERROR_TEXT_COLOR: u32 = crate::kui::PALETTE_ORANGE;
+    const MUTED_TEXT_COLOR: u32 = crate::kui::PALETTE_MUTED;
+    /// PIT runs at 100 Hz; 25 ticks ≈ 250 ms per cursor phase.
+    const CURSOR_BLINK_TICKS: u64 = 25;
 
     fn visible_line_count(&self) -> usize {
-        let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-        let content = crate::kui::window_content_rect(fb);
+        let Some(content) = self.content else {
+            return 1;
+        };
         let (_, text_y) = crate::kui::window_text_origin(&content);
         let line_h =
             crate::kui::kdraw::line_height(&crate::kui::kfont::ICELAND, Self::FONT_SIZE) as u32;
@@ -388,6 +500,18 @@ impl Shell {
         }
     }
 
+    fn is_input_focused(&self) -> bool {
+        let Some(handle) = self.window else {
+            return false;
+        };
+        crate::kui::window::WINDOW_MANAGER.lock().is_focused(handle)
+    }
+
+    fn show_cursor(&mut self) {
+        self.cursor_visible = true;
+        self.cursor_blink_last = crate::time::monotonic_ms();
+    }
+
     fn ensure_prompt_width(&mut self) {
         if self.prompt_width == 0 {
             self.prompt_width = crate::kui::kdraw::text_length(
@@ -412,7 +536,12 @@ impl Shell {
         } else {
             Self::PROMPT_OUTPUT
         };
-        crate::kui::draw_text(
+        let Some(handle) = self.window else {
+            return;
+        };
+        let _ = crate::kui::draw_text_in_window(
+            handle,
+            self.pid,
             x,
             y,
             Self::FONT_SIZE,
@@ -424,7 +553,9 @@ impl Shell {
             content.w,
             content.h,
         );
-        crate::kui::draw_text(
+        let _ = crate::kui::draw_text_in_window(
+            handle,
+            self.pid,
             x + self.prompt_width,
             y,
             Self::FONT_SIZE,
@@ -443,6 +574,32 @@ impl Shell {
         end.saturating_sub(start).saturating_sub(1) as u32
     }
 
+    fn draw_cursor(&self, text_x: u32, y: u32, line_h: u32, input_text: &str) {
+        if !self.cursor_visible {
+            return;
+        }
+        let Some(handle) = self.window else {
+            return;
+        };
+        let cursor_x = text_x
+            + self.prompt_width
+            + crate::kui::kdraw::text_length(
+                input_text,
+                &crate::kui::kfont::ICELAND,
+                Self::FONT_SIZE,
+            ) as u32;
+        let cursor_h = line_h.saturating_sub(4).max(4);
+        let _ = crate::kui::draw_rect_f_in_window(
+            handle,
+            self.pid,
+            cursor_x,
+            y + 2,
+            2,
+            cursor_h,
+            Self::INPUT_TEXT_COLOR,
+        );
+    }
+
     fn draw_input_line(
         &self,
         text_x: u32,
@@ -452,8 +609,14 @@ impl Shell {
     ) {
         let y = text_y + self.input_row_slot() * line_h;
         let line = self.row_text(self.lines.len());
-        crate::kui::draw_rect_f(content.x, y, content.w, line_h, 0x000000);
+        let Some(handle) = self.window else {
+            return;
+        };
+        let _ = crate::kui::draw_rect_f_in_window(
+            handle, self.pid, content.x, y, content.w, line_h, 0x000000,
+        );
         self.draw_row(text_x, y, ShellLineKind::Input, &line, content);
+        self.draw_cursor(text_x, y, line_h, &line);
     }
 
     fn redraw(&mut self, scope: RedrawScope) {
@@ -461,10 +624,15 @@ impl Shell {
             return;
         }
 
+        let Some(content) = self.content else {
+            return;
+        };
+        let Some(handle) = self.window else {
+            return;
+        };
+
         self.ensure_prompt_width();
 
-        let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-        let content = crate::kui::window_content_rect(fb);
         let (text_x, text_y) = crate::kui::window_text_origin(&content);
         let line_h =
             crate::kui::kdraw::line_height(&crate::kui::kfont::ICELAND, Self::FONT_SIZE) as u32;
@@ -472,13 +640,18 @@ impl Shell {
         match scope {
             RedrawScope::Skip => {}
             RedrawScope::Full => {
-                crate::kui::draw_rect_f(content.x, content.y, content.w, content.h, 0x000000);
+                let _ = crate::kui::draw_rect_f_in_window(
+                    handle, self.pid, content.x, content.y, content.w, content.h, 0x000000,
+                );
                 let (start, end) = self.visible_row_range();
                 for (i, row) in (start..end).enumerate() {
                     let kind = self.row_kind(row);
                     let line = self.row_text(row);
                     let y = text_y + i as u32 * line_h;
                     self.draw_row(text_x, y, kind, &line, &content);
+                    if row == self.lines.len() {
+                        self.draw_cursor(text_x, y, line_h, &line);
+                    }
                 }
             }
             RedrawScope::InputLine => {
@@ -490,7 +663,9 @@ impl Shell {
                 let row_slot = committed_row.saturating_sub(start) as u32;
                 let y = text_y + row_slot * line_h;
                 let line = self.row_text(committed_row);
-                crate::kui::draw_rect_f(content.x, y, content.w, line_h, 0x000000);
+                let _ = crate::kui::draw_rect_f_in_window(
+                    handle, self.pid, content.x, y, content.w, line_h, 0x000000,
+                );
                 self.draw_row(text_x, y, ShellLineKind::Input, &line, &content);
                 self.draw_input_line(text_x, text_y, line_h, &content);
             }
@@ -682,16 +857,19 @@ impl Shell {
             return;
         };
         match *sub {
-            "start" => {
-                if Self::process_pid_by_name("OFS Driver").is_some() {
+            "start" => match crate::proc::spawn::spawn_by_name("ofs", &[]) {
+                Ok(()) => {
+                    self.push_output(alloc::string::String::from("ok: queued ofs driver spawn"));
+                }
+                Err(crate::proc::spawn::SpawnError::AlreadyRunning) => {
                     self.push_output(alloc::string::String::from(
                         "ok: ofs driver already running",
                     ));
-                    return;
                 }
-                crate::proc::create_spawn_task::<crate::apps::filesystem::OfsDriver>();
-                self.push_output(alloc::string::String::from("ok: queued ofs driver spawn"));
-            }
+                Err(crate::proc::spawn::SpawnError::UnknownProcess) => {
+                    self.push_output(alloc::string::String::from("error: ofs spawn failed"));
+                }
+            },
             "list" | "write" | "read" => {
                 let Some(ofs_pid) = Self::process_pid_by_name("OFS Driver") else {
                     self.push_output(alloc::string::String::from(
@@ -728,6 +906,131 @@ impl Shell {
         }
     }
 
+    fn cmd_cc(&mut self, args: &[&str]) {
+        let Some(source_name) = args.first() else {
+            self.push_output(alloc::string::String::from(
+                "error: usage cc <file.c>",
+            ));
+            return;
+        };
+        if !source_name.ends_with(".c") {
+            self.push_output(alloc::string::String::from(
+                "error: cc expects a .c source file",
+            ));
+            return;
+        }
+        if crate::ofs::vfs::find_file_index(source_name).is_none() {
+            self.push_output(alloc::format!("error: file not found: {source_name}"));
+            return;
+        }
+        if crate::proc::registry::PROCESS_TABLE
+            .lock()
+            .iter()
+            .any(|entry| entry.name == "Compiler")
+        {
+            self.push_output(alloc::string::String::from(
+                "error: compiler already running",
+            ));
+            return;
+        }
+
+        let spawn_args = alloc::vec![
+            alloc::string::String::from(*source_name),
+            alloc::format!("{}", self.pid),
+        ];
+        crate::proc::create_spawn_task::<crate::apps::compiler::Compiler>(spawn_args);
+        self.push_output(alloc::format!(
+            "cc: spawned compiler for {source_name}..."
+        ));
+    }
+
+    fn cmd_run(&mut self, args: &[&str]) {
+        let Some(name) = args.first() else {
+            self.push_output(alloc::string::String::from(
+                "error: usage run <file.bin>",
+            ));
+            return;
+        };
+        if !crate::ofs::vfs::is_executable(name) {
+            self.push_output(alloc::format!("error: {name} is not executable"));
+            return;
+        }
+        let bytes = match crate::ofs::vfs::read_all_bytes(name) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                self.push_output(err);
+                return;
+            }
+        };
+        let image = match crate::runtime::parse_bin(&bytes) {
+            Ok(image) => image,
+            Err(err) => {
+                self.push_output(err);
+                return;
+            }
+        };
+        crate::runtime::queue_run(
+            image,
+            alloc::vec![alloc::string::String::from(*name)],
+            self.pid,
+        );
+    }
+
+    fn cmd_keymap(&mut self, args: &[&str]) {
+        let Some(name) = args.first() else {
+            let current = match crate::drivers::ps2::keymap() {
+                crate::drivers::ps2::Keymap::Us => "us",
+                crate::drivers::ps2::Keymap::De => "de",
+            };
+            self.push_output(alloc::format!("keymap: {current}"));
+            self.push_output(alloc::string::String::from("usage: keymap us | keymap de"));
+            return;
+        };
+        match *name {
+            "us" | "en" | "qwerty" => {
+                crate::drivers::ps2::set_keymap(crate::drivers::ps2::Keymap::Us);
+                self.push_output(alloc::string::String::from("ok: keymap us"));
+            }
+            "de" | "qwertz" => {
+                crate::drivers::ps2::set_keymap(crate::drivers::ps2::Keymap::De);
+                self.push_output(alloc::string::String::from("ok: keymap de"));
+            }
+            _ => self.push_output(alloc::format!("error: unknown keymap: {name}")),
+        }
+    }
+
+    fn cmd_spawn(&mut self, args: &[&str]) {
+        let Some(name) = args.first() else {
+            self.push_output(alloc::string::String::from("Spawnable processes"));
+            for entry in crate::proc::spawn::list_spawnable() {
+                self.push_output(alloc::format!(
+                    "  {}  ({})",
+                    entry.aliases.join(", "),
+                    entry.running_name
+                ));
+            }
+            self.push_output(alloc::string::String::from(
+                "usage: spawn <name> [args...]",
+            ));
+            return;
+        };
+        let spawn_args = args.get(1..).unwrap_or(&[]);
+        match crate::proc::spawn::spawn_by_name(name, spawn_args) {
+            Ok(()) => self.push_output(alloc::format!("ok: queued spawn {name}")),
+            Err(crate::proc::spawn::SpawnError::AlreadyRunning) => {
+                let running = crate::proc::spawn::list_spawnable()
+                    .iter()
+                    .find(|entry| entry.aliases.contains(name))
+                    .map(|entry| entry.running_name)
+                    .unwrap_or(name);
+                self.push_output(alloc::format!("error: {running} already running"));
+            }
+            Err(crate::proc::spawn::SpawnError::UnknownProcess) => {
+                self.push_output(alloc::format!("error: unknown process: {name}"));
+            }
+        }
+    }
+
     fn cmd_help(&mut self) {
         self.push_output(alloc::string::String::from("OwOS Shell Commands"));
         self.push_output(alloc::string::String::from(
@@ -744,6 +1047,9 @@ impl Shell {
         ));
         self.push_output(alloc::string::String::from(
             "  ps                list processes",
+        ));
+        self.push_output(alloc::string::String::from(
+            "  spawn [name] ...  list or launch a process",
         ));
         self.push_output(alloc::string::String::from(
             "  kill <pid>        kill process",
@@ -767,6 +1073,9 @@ impl Shell {
             "  panic             trigger kernel panic",
         ));
         self.push_output(alloc::string::String::from(
+            "  breakpoint        trigger int3 breakpoint fault",
+        ));
+        self.push_output(alloc::string::String::from(
             "  ofs start         spawn OFS driver",
         ));
         self.push_output(alloc::string::String::from(
@@ -778,7 +1087,42 @@ impl Shell {
         self.push_output(alloc::string::String::from(
             "  ofs read ...      read file (all or one block)",
         ));
+        self.push_output(alloc::string::String::from(
+            "  keymap us|de      switch keyboard layout",
+        ));
+        self.push_output(alloc::string::String::from(
+            "  cc <file.c>       compile C source via TCC to .bin",
+        ));
+        self.push_output(alloc::string::String::from(
+            "  run <file.bin>    execute compiled program",
+        ));
+        self.push_output(alloc::string::String::from(
+            "  edit [file]       open graphical text editor",
+        ));
         self.push_blank_output();
+    }
+
+    fn cmd_edit(&mut self, args: &[&str]) {
+        if crate::proc::registry::PROCESS_TABLE
+            .lock()
+            .iter()
+            .any(|entry| entry.name == "Text Editor")
+        {
+            self.push_output(alloc::string::String::from(
+                "error: text editor already running",
+            ));
+            return;
+        }
+        let spawn_args: alloc::vec::Vec<alloc::string::String> = args
+            .iter()
+            .map(|arg| alloc::string::String::from(*arg))
+            .collect();
+        crate::proc::create_spawn_task::<crate::apps::texteditor::TextEditor>(spawn_args);
+        if let Some(file) = args.first() {
+            self.push_output(alloc::format!("ok: opened editor for {file}"));
+        } else {
+            self.push_output(alloc::string::String::from("ok: opened editor"));
+        }
     }
 
     fn execute_command(&mut self, line: &str) {
@@ -826,7 +1170,17 @@ impl Shell {
             "alloc" => self.cmd_alloc(&args),
             "leak" => self.cmd_leak(&args),
             "panic" => panic!("shell: panic command"),
+            "breakpoint" => {
+                unsafe {
+                    core::arch::asm!("int3", options(nomem, nostack));
+                }
+            }
             "ofs" => self.cmd_ofs(&args),
+            "keymap" => self.cmd_keymap(&args),
+            "cc" => self.cmd_cc(&args),
+            "run" => self.cmd_run(&args),
+            "spawn" => self.cmd_spawn(&args),
+            "edit" => self.cmd_edit(&args),
             "" => {}
             _ => self.push_output(alloc::format!("error: unknown command: {cmd}")),
         }

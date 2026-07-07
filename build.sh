@@ -5,6 +5,11 @@ set -e
 # cargo clean
 rm -rf iso_root owos.iso
 
+# Build userspace toolchain artifacts
+chmod +x toolchain/build.sh toolchain/tcc/build.sh toolchain/pack_bin.py
+./toolchain/build.sh
+./toolchain/tcc/build.sh
+
 # Build kernel
 cargo build --release
 
@@ -16,7 +21,13 @@ fi
 
 # Create ISO directory structure
 rm -rf iso_root
-mkdir -p iso_root/boot/limine iso_root/EFI/BOOT
+mkdir -p iso_root/boot/limine iso_root/EFI/BOOT iso_root/owos/libc iso_root/owos/include
+
+# Copy libc artifacts
+cp libc/out/libc.a iso_root/owos/libc/
+cp libc/out/hello.bin iso_root/owos/libc/
+cp libc/out/tcc.bin iso_root/owos/libc/
+cp -r libc/include/* iso_root/owos/include/
 
 # Copy kernel
 cp target/x86_64-unknown-none/release/owos iso_root/boot/

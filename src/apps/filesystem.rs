@@ -3,34 +3,25 @@ pub struct OfsDriver {
     name: &'static str,
     pid: u32,
     status: crate::proc::ProcessStatus,
-
-    files: alloc::vec::Vec<crate::ofs::PlaintextFile>,
-    ticks: u32,
     closing: bool,
 }
 
 impl OfsDriver {
     fn closing_procedure(&mut self) -> Option<crate::proc::ProcessEvent> {
         if self.closing {
+            let mut vfs = crate::ofs::vfs::VFS.lock();
             for _ in 0..1000 {
-                if self.files.pop().is_none() {
+                if vfs.pop().is_none() {
                     break;
                 }
             }
-            if self.files.is_empty() {
+            if vfs.is_empty() {
                 return Some(crate::proc::ProcessEvent::Closed(0));
             }
 
             return Some(crate::proc::ProcessEvent::Yielded);
         }
         None
-    }
-
-    fn find_file_index(&self, name: &str) -> Option<usize> {
-        let name = name.trim();
-        self.files
-            .iter()
-            .position(|file| file.display_name() == name)
     }
 
     fn format_block(file: &crate::ofs::PlaintextFile, block: usize) -> alloc::string::String {
@@ -87,11 +78,12 @@ impl OfsDriver {
         let cmd = msg.split_whitespace().next().unwrap_or("");
         match cmd {
             "list" => {
-                if self.files.is_empty() {
+                let vfs = crate::ofs::vfs::VFS.lock();
+                if vfs.is_empty() {
                     return alloc::string::String::from("(no files)");
                 }
                 let mut out = alloc::string::String::new();
-                for file in &self.files {
+                for file in vfs.iter() {
                     out.push_str(&alloc::format!(
                         "  {} ({} block{})\n",
                         file.display_name(),
@@ -106,40 +98,21 @@ impl OfsDriver {
                     Ok(args) => args,
                     Err(e) => return e,
                 };
-                if let Some(index) = self.find_file_index(name) {
-                    match self.files[index].write_bytes(data.as_bytes()) {
-                        Ok(()) => alloc::format!(
-                            "ok: wrote {} byte(s) to {name} (block {})",
-                            data.len(),
-                            self.files[index].block_count() - 1
-                        ),
-                        Err(e) => alloc::format!("error: {e:?}"),
-                    }
-                } else {
-                    match crate::ofs::PlaintextFile::new(name) {
-                        Ok(mut file) => match file.write_bytes(data.as_bytes()) {
-                            Ok(()) => {
-                                self.files.push(file);
-                                alloc::format!(
-                                    "ok: created {name}, wrote {} byte(s) (block 0)",
-                                    data.len()
-                                )
-                            }
-                            Err(e) => alloc::format!("error: {e:?}"),
-                        },
-                        Err(e) => alloc::format!("error: {e:?}"),
-                    }
-                }
+                crate::ofs::vfs::write_text(name, data).unwrap_or_else(|e| e)
             }
             "read" => {
                 let (name, block_arg) = match Self::parse_read_args(msg) {
                     Ok(args) => args,
                     Err(e) => return e,
                 };
-                let Some(index) = self.find_file_index(name) else {
+                let vfs = crate::ofs::vfs::VFS.lock();
+                let Some(index) = vfs
+                    .iter()
+                    .position(|file| file.display_name() == name)
+                else {
                     return alloc::format!("error: file not found: {name}");
                 };
-                let file = &self.files[index];
+                let file = &vfs[index];
                 if file.block_count() == 0 {
                     return alloc::format!("error: {name} has no data blocks");
                 }
@@ -186,9 +159,6 @@ impl crate::proc::Process for OfsDriver {
             name: "OFS Driver",
             pid: 0,
             status: crate::proc::ProcessStatus::Running,
-
-            files: alloc::vec::Vec::new(),
-            ticks: 0,
             closing: false,
         })
     }
@@ -217,19 +187,19 @@ impl crate::proc::Process for OfsDriver {
         self.status = status;
     }
 
+    fn apply_spawn_args(&mut self, _args: &[alloc::string::String]) {}
+
     fn on_init(&self) {}
 
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
         if let Some(event) = self.closing_procedure() {
             return Ok(event);
         }
-        self.ticks += 1;
-
         Ok(crate::proc::ProcessEvent::Yielded)
     }
 
-    fn on_uninit(mut self: alloc::boxed::Box<Self>) {
-        self.files.clear();
+    fn on_uninit(self: alloc::boxed::Box<Self>) {
+        crate::ofs::vfs::VFS.lock().clear();
     }
 
     fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {

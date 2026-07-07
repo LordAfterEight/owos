@@ -1,20 +1,43 @@
+pub mod compositor_ipc;
 pub mod kdraw;
 pub mod kfont;
-pub use kdraw::draw_rect;
-pub use kdraw::draw_rect_f;
-pub use kdraw::draw_text;
-pub use kdraw::present;
+pub mod window;
 
-/// Outer border top-left and thickness drawn by [`kbackground`].
-pub const BORDER_X: u32 = 10;
-pub const BORDER_Y: u32 = 55;
+pub use kdraw::draw_rect_f_in_window;
+pub use kdraw::draw_rect_in_window;
+pub use kdraw::draw_text_in_window;
+pub use window::window_text_origin;
+pub use window::WindowHandle;
+
+/// Border thickness around the content area.
 pub const BORDER_T: u16 = 2;
-/// Pixels between the outer border bottom edge and the framebuffer bottom.
-pub const OUTER_BOTTOM_MARGIN: u32 = 10;
+/// Border thickness of the title bar.
+pub const TITLE_BAR_BORDER: u16 = 1;
+/// Title bar height (above the content border).
+pub const TITLE_BAR_H: u32 = 26;
+/// Font size for window titles drawn by the compositor.
+pub const TITLE_FONT_SIZE: f32 = 20.0;
+
+pub const PALETTE_MAGENTA: u32 = 0xC5003C;
+pub const PALETTE_AMBER: u32 = 0xF3C200;
+pub const PALETTE_CYAN: u32 = 0x55EAD4;
+pub const PALETTE_LIGHT_CYAN: u32 = 0x9BE8FF;
+pub const PALETTE_ORANGE: u32 = 0xF38020;
+pub const PALETTE_MUTED: u32 = 0x5A9EAA;
+/// Opacity of frosted window backgrounds (70% black tint).
+pub const WINDOW_BG_ALPHA: u8 = 100;
+/// Separable box-blur radius (9-tap horizontal + vertical).
+pub const BLUR_RADIUS: i32 = 4;
 /// Text origin offset inside the inner content rectangle.
 pub const TEXT_INSET_X: u32 = 8;
 pub const TEXT_INSET_Y: u32 = 3;
 
+/// Legacy layout constants used when computing default window frames.
+pub const BORDER_X: u32 = 10;
+pub const BORDER_Y: u32 = 55;
+pub const OUTER_BOTTOM_MARGIN: u32 = 10;
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WindowContentRect {
     pub x: u32,
     pub y: u32,
@@ -31,55 +54,16 @@ pub fn framebuffer_rect(fb: &crate::limine::Framebuffer) -> WindowContentRect {
     }
 }
 
-/// Inner drawable area inside the border drawn by [`kbackground`].
-pub fn window_content_rect(fb: &crate::limine::Framebuffer) -> WindowContentRect {
-    let t = BORDER_T as u32;
-    WindowContentRect {
-        x: BORDER_X + t,
-        y: BORDER_Y + t,
-        w: fb.width as u32 - BORDER_X * 2 - t * 2,
-        h: fb.height as u32 - BORDER_Y - OUTER_BOTTOM_MARGIN - t * 2,
+/// Flush the backbuffer to the framebuffer. For kernel emergency paths (panic) only.
+pub fn present_emergency() {
+    kdraw::present();
+}
+
+pub fn default_shell_frame(fb: &crate::limine::Framebuffer) -> window::FrameRect {
+    window::FrameRect {
+        x: BORDER_X,
+        y: BORDER_Y,
+        w: fb.width as u32 - BORDER_X * 2,
+        h: fb.height as u32 - BORDER_Y - OUTER_BOTTOM_MARGIN,
     }
-}
-
-pub fn window_text_origin(content: &WindowContentRect) -> (u32, u32) {
-    (content.x + TEXT_INSET_X, content.y + TEXT_INSET_Y)
-}
-
-pub fn kbackground() {
-    let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-    crate::kui::kdraw::clear_backbuffer(0);
-    crate::kui::draw_rect(
-            BORDER_X,
-            BORDER_Y,
-            fb.width as u32 - BORDER_X * 2,
-            fb.height as u32 - BORDER_Y - OUTER_BOTTOM_MARGIN,
-            BORDER_T,
-            0xC5003C,
-        );
-}
-
-pub fn ktitledwindow(title: &str) {
-    kbackground();
-    let fb = crate::kui::kdraw::GLOBAL_FB.get().unwrap().0;
-    let clip = framebuffer_rect(fb);
-    crate::kui::draw_text(
-        15, 10, 40.0, &crate::kui::kfont::BARCODE, title, 0xC5003C, clip.x, clip.y, clip.w,
-        clip.h,
-    );
-    let text = alloc::format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-    crate::kui::draw_text(
-        fb.width as u32
-            - crate::kui::kdraw::text_length(&text, &crate::kui::kfont::BARCODE, 25.0) as u32
-            - 20,
-        fb.height as u32 - 40,
-        25.0,
-        &crate::kui::kfont::BARCODE,
-        &text,
-        0xC5003C,
-        clip.x,
-        clip.y,
-        clip.w,
-        clip.h,
-    );
 }

@@ -1,4 +1,5 @@
 pub mod ipc;
+pub mod vfs;
 
 pub const FLAG_READ: u8 = 0b1000_0000;
 pub const FLAG_WRTE: u8 = 0b0100_0000;
@@ -51,6 +52,11 @@ impl DataBlock {
         Self { data }
     }
 
+    fn set_bytes(&mut self, bytes: &[u8]) {
+        self.data.clear();
+        self.data.extend_from_slice(bytes);
+    }
+
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -92,6 +98,14 @@ impl PlaintextFile {
         self.header.flags & FLAG_LOCK != 0
     }
 
+    pub fn executable(&self) -> bool {
+        self.header.flags & FLAG_EXEC != 0
+    }
+
+    pub fn set_flags(&mut self, flags: u8) {
+        self.header.flags = flags;
+    }
+
     pub fn block_count(&self) -> usize {
         self.blocks.len()
     }
@@ -107,11 +121,39 @@ impl PlaintextFile {
         Ok(())
     }
 
-    /// Writes a raw byte slice as a new block.
-    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), FileIoError> {
+    /// Appends a raw byte slice as a new block.
+    pub fn append_block(&mut self, bytes: &[u8]) -> Result<(), FileIoError> {
         self.check_access(true)?;
         self.blocks.push(DataBlock::new(bytes.to_vec()));
         Ok(())
+    }
+
+    /// Replaces the contents of an existing block in place.
+    pub fn replace_block(&mut self, index: usize, bytes: &[u8]) -> Result<(), FileIoError> {
+        self.check_access(true)?;
+        self.blocks
+            .get_mut(index)
+            .ok_or(FileIoError::OutOfBounds)?
+            .set_bytes(bytes);
+        Ok(())
+    }
+
+    /// Replaces the entire file with a single block.
+    pub fn set_content(&mut self, bytes: &[u8]) -> Result<(), FileIoError> {
+        self.check_access(true)?;
+        self.blocks.clear();
+        self.blocks.push(DataBlock::new(bytes.to_vec()));
+        Ok(())
+    }
+
+    /// Drops trailing blocks so the file ends at `count` blocks.
+    pub fn truncate_blocks(&mut self, count: usize) {
+        self.blocks.truncate(count);
+    }
+
+    /// Writes a raw byte slice as a new block.
+    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), FileIoError> {
+        self.append_block(bytes)
     }
 
     /// Serializes any `T: Serialize` and writes it as a new block.

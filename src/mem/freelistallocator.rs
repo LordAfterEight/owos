@@ -109,8 +109,13 @@ impl FreeListAllocator {
         // multiple of GRANULARITY. That means splits never produce a
         // remainder smaller than GRANULARITY, so nothing gets orphaned.
         let size = (size + GRANULARITY - 1) & !(GRANULARITY - 1);
-        // size_align is always valid here since we're only ever rounding up
-        Layout::from_size_align(size, align).unwrap()
+        let size = if size % align == 0 {
+            size
+        } else {
+            (size + align - 1) & !(align - 1)
+        };
+        Layout::from_size_align(size, align)
+            .expect("adjust_layout produced invalid size/align pair")
     }
 
     pub fn free_node_count(&self) -> usize {
