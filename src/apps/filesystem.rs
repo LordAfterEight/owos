@@ -1,16 +1,23 @@
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
+use crate::proc::{
+    IpcData, IpcReceiveError, ProcessEvent, ProcessError, ProcessStatus,
+};
+
 #[derive(Debug)]
 pub struct OfsDriver {
     name: &'static str,
     pid: u32,
-    status: crate::proc::ProcessStatus,
+    status: ProcessStatus,
 
-    files: alloc::vec::Vec<crate::ofs::PlaintextFile>,
+    files: Vec<crate::ofs::PlaintextFile>,
     ticks: u32,
     closing: bool,
 }
 
 impl OfsDriver {
-    fn closing_procedure(&mut self) -> Option<crate::proc::ProcessEvent> {
+    fn closing_procedure(&mut self) -> Option<ProcessEvent> {
         if self.closing {
             for _ in 0..1000 {
                 if self.files.pop().is_none() {
@@ -18,23 +25,23 @@ impl OfsDriver {
                 }
             }
             if self.files.is_empty() {
-                return Some(crate::proc::ProcessEvent::Closed(0));
+                return Some(ProcessEvent::Closed(0));
             }
 
-            return Some(crate::proc::ProcessEvent::Yielded);
+            return Some(ProcessEvent::Yielded);
         }
         None
     }
 }
 
 impl crate::proc::Process for OfsDriver {
-    fn new() -> alloc::boxed::Box<Self> {
-        alloc::boxed::Box::new(Self {
+    fn new() -> Box<Self> {
+        Box::new(Self {
             name: "OFS Driver",
             pid: 0,
-            status: crate::proc::ProcessStatus::Running,
+            status: ProcessStatus::Running,
 
-            files: alloc::vec::Vec::new(),
+            files: Vec::new(),
             ticks: 0,
             closing: false,
         })
@@ -48,7 +55,7 @@ impl crate::proc::Process for OfsDriver {
         self.pid
     }
 
-    fn status(&self) -> crate::proc::ProcessStatus {
+    fn status(&self) -> ProcessStatus {
         self.status
     }
 
@@ -60,27 +67,27 @@ impl crate::proc::Process for OfsDriver {
         self.pid = pid;
     }
 
-    fn set_status(&mut self, status: crate::proc::ProcessStatus) {
+    fn set_status(&mut self, status: ProcessStatus) {
         self.status = status;
     }
 
     fn on_init(&self) {}
 
-    fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
+    fn on_tick(&mut self) -> Result<ProcessEvent, ProcessError> {
         if let Some(event) = self.closing_procedure() {
             return Ok(event);
         }
         self.ticks += 1;
 
-        Ok(crate::proc::ProcessEvent::Yielded)
+        Ok(ProcessEvent::Yielded)
     }
 
-    fn on_uninit(mut self: alloc::boxed::Box<Self>) {
+    fn on_uninit(mut self: Box<Self>) {
         self.files.clear();
     }
 
-    fn receive(&mut self, _data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
-        Err(crate::proc::IpcReceiveError::Message("Not expecting any data"))
+    fn receive(&mut self, _data: IpcData) -> Result<(), IpcReceiveError> {
+        Err(IpcReceiveError::Message("Not expecting any data"))
     }
     fn bind(&mut self, _subscriber: u32) {}
 }

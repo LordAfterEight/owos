@@ -1,14 +1,17 @@
+use alloc::boxed::Box;
+use alloc::string::String;
+
 pub mod csched;
 pub mod registry;
 
 pub trait Process {
-    fn new() -> alloc::boxed::Box<Self>
+    fn new() -> Box<Self>
     where
         Self: Sized;
 
     fn on_tick(&mut self) -> Result<ProcessEvent, ProcessError>;
     fn on_init(&self);
-    fn on_uninit(self: alloc::boxed::Box<Self>);
+    fn on_uninit(self: Box<Self>);
 
     fn pid(&self) -> u32;
     fn name(&self) -> &'static str;
@@ -43,16 +46,16 @@ pub enum ProcessStatus {
 
 #[derive(Debug)]
 pub enum IpcReceiveError {
-    Concrete(alloc::boxed::Box<dyn core::any::Any + Send>),
+    Concrete(Box<dyn core::any::Any + Send>),
     Message(&'static str),
 }
 
 #[derive(Debug)]
 pub enum IpcData {
-    Message(alloc::string::String),
-    SendConfirmation(alloc::string::String),
-    SendError(alloc::string::String),
-    Payload(alloc::boxed::Box<dyn core::any::Any + Send>),
+    Message(String),
+    SendConfirmation(String),
+    SendError(String),
+    Payload(Box<dyn core::any::Any + Send>),
 }
 
 /// Queues a spawn request for a process of type `T`.
@@ -60,25 +63,19 @@ pub enum IpcData {
 /// `T` must implement `Process + Send + 'static`.
 /// The process will be spawned the next time the scheduler drains its command queue.
 pub fn create_spawn_task<T: Process + Send + 'static>() {
-    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+    csched::SCHEDULER_COMMAND_QUEUE
         .lock()
-        .push_back(crate::proc::csched::SchedulerTask::Spawn(
-            alloc::boxed::Box::new(|| <T as crate::proc::Process>::new()),
-        ));
+        .push_back(csched::SchedulerTask::Spawn(Box::new(|| <T as Process>::new())));
 }
 
 pub fn create_ipc_task(sender_pid: u32, target_pid: u32, data: IpcData) {
-    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+    csched::SCHEDULER_COMMAND_QUEUE
         .lock()
-        .push_back(crate::proc::csched::SchedulerTask::Send(
-            sender_pid, target_pid, data,
-        ))
+        .push_back(csched::SchedulerTask::Send(sender_pid, target_pid, data));
 }
 
 pub fn create_binding_task(sender_pid: u32, target_pid: u32) {
-    crate::proc::csched::SCHEDULER_COMMAND_QUEUE
+    csched::SCHEDULER_COMMAND_QUEUE
         .lock()
-        .push_back(
-            crate::proc::csched::SchedulerTask::ConnectTo(sender_pid, target_pid)
-        );
+        .push_back(csched::SchedulerTask::ConnectTo(sender_pid, target_pid));
 }

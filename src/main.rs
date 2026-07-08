@@ -104,7 +104,7 @@ extern "C" fn start() -> ! {
     owos::kui::kfont::init();
     owos::println!("Done");
 
-    owos::kui::ktitledwindow(&alloc::format!("OwOS v{}", env!("CARGO_PKG_VERSION")));
+    owos::kui::ktitledwindow(&alloc::format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")));
     let mut scheduler = owos::proc::csched::CooperativeScheduler::init();
 
     scheduler.add_process::<owos::apps::memtracker::MemTracker>();

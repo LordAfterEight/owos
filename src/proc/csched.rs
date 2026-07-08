@@ -1,43 +1,49 @@
-use alloc::string::ToString;
+use alloc::boxed::Box;
+use alloc::collections::VecDeque;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
-pub static SCHEDULER_COMMAND_QUEUE: spin::Mutex<alloc::collections::VecDeque<SchedulerTask>> =
-    spin::Mutex::new(alloc::collections::VecDeque::new());
+use crate::klog::{log, MessageType};
+use crate::proc::registry::{ProcTableEntry, PROCESS_TABLE};
+use crate::proc::{IpcData, Process, ProcessError, ProcessEvent, ProcessStatus};
+
+pub static SCHEDULER_COMMAND_QUEUE: spin::Mutex<VecDeque<SchedulerTask>> =
+    spin::Mutex::new(VecDeque::new());
 
 pub struct CooperativeScheduler {
     pid_counter: u32,
-    procs: alloc::vec::Vec<alloc::boxed::Box<dyn crate::proc::Process>>,
+    procs: Vec<Box<dyn Process>>,
 }
 
 impl CooperativeScheduler {
     pub fn init() -> Self {
         Self {
             pid_counter: 0,
-            procs: alloc::vec::Vec::new(),
+            procs: Vec::new(),
         }
     }
 
-    pub fn add_process<T: crate::proc::Process + 'static>(&mut self) {
+    pub fn add_process<T: Process + 'static>(&mut self) {
         let mut process = T::new();
         process.set_pid(self.pid_counter);
         self.pid_counter += 1;
 
-        crate::klog::log(
+        log(
             "Cooperative Scheduler",
-            &alloc::format!(
+            &format!(
                 "Initialized process: {} | PID {}",
                 process.name(),
                 process.pid()
             ),
-            crate::klog::MessageType::Info
+            MessageType::Info,
         );
 
-        crate::proc::registry::PROCESS_TABLE
-            .lock()
-            .push(crate::proc::registry::ProcTableEntry {
-                pid: process.pid(),
-                name: process.name(),
-                status: crate::proc::ProcessStatus::Running,
-            });
+        PROCESS_TABLE.lock().push(ProcTableEntry {
+            pid: process.pid(),
+            name: process.name(),
+            status: ProcessStatus::Running,
+        });
 
         process.on_init();
         self.procs.push(process);
@@ -49,28 +55,26 @@ impl CooperativeScheduler {
             match cmd {
                 SchedulerTask::Freeze(pid) => {
                     if let Some(p) = self.procs.iter_mut().find(|p| p.pid() == pid) {
-                        p.set_status(crate::proc::ProcessStatus::Frozen);
+                        p.set_status(ProcessStatus::Frozen);
                     }
                 }
                 SchedulerTask::Unfreeze(pid) => {
                     if let Some(p) = self.procs.iter_mut().find(|p| p.pid() == pid) {
-                        p.set_status(crate::proc::ProcessStatus::Running);
+                        p.set_status(ProcessStatus::Running);
                     }
                 }
                 SchedulerTask::Kill(pid) => {
                     if let Some(idx) = self.procs.iter().position(|p| p.pid() == pid) {
                         let process = self.procs.remove(idx);
-                        crate::proc::registry::PROCESS_TABLE
-                            .lock()
-                            .retain(|e| e.pid != pid);
-                        crate::klog::log(
+                        PROCESS_TABLE.lock().retain(|e| e.pid != pid);
+                        log(
                             "Cooperative Scheduler",
-                            &alloc::format!(
+                            &format!(
                                 "Killing process: {} | PID {}",
                                 process.name(),
                                 process.pid()
                             ),
-                            crate::klog::MessageType::Info
+                            MessageType::Info,
                         );
                         process.on_uninit();
                     }
@@ -81,23 +85,21 @@ impl CooperativeScheduler {
                     process.set_pid(self.pid_counter);
                     self.pid_counter += 1;
 
-                    crate::klog::log(
+                    log(
                         "Cooperative Scheduler",
-                        &alloc::format!(
+                        &format!(
                             "Spawned process: {} | PID {}",
                             process.name(),
                             process.pid()
                         ),
-                        crate::klog::MessageType::Info
+                        MessageType::Info,
                     );
 
-                    crate::proc::registry::PROCESS_TABLE.lock().push(
-                        crate::proc::registry::ProcTableEntry {
-                            pid: process.pid(),
-                            name: process.name(),
-                            status: crate::proc::ProcessStatus::Running,
-                        },
-                    );
+                    PROCESS_TABLE.lock().push(ProcTableEntry {
+                        pid: process.pid(),
+                        name: process.name(),
+                        status: ProcessStatus::Running,
+                    });
 
                     process.on_init();
                     self.procs.push(process);
@@ -106,40 +108,34 @@ impl CooperativeScheduler {
                     let entry = match self.procs.iter_mut().find(|p| p.pid() == target_pid) {
                         Some(entry) => entry,
                         None => {
-                            _ = self.procs[sender_pid as usize].receive(
-                                crate::proc::IpcData::SendError(alloc::format!(
-                                    "Invalid PID: {target_pid}"
-                                )),
-                            );
+                            _ = self.procs[sender_pid as usize].receive(IpcData::SendError(
+                                format!("Invalid PID: {target_pid}"),
+                            ));
                             continue;
                         }
                     };
                     match entry.receive(data) {
                         Ok(_) => {
                             let _ = self.procs[sender_pid as usize].receive(
-                                crate::proc::IpcData::SendConfirmation(
-                                    "Payload sent successfully".to_string(),
-                                ),
+                                IpcData::SendConfirmation(String::from(
+                                    "Payload sent successfully",
+                                )),
                             );
                         }
                         Err(e) => {
                             let _ = self.procs[sender_pid as usize].receive(
-                                crate::proc::IpcData::SendError(alloc::format!(
-                                    "Send failed: {e:?}"
-                                )),
+                                IpcData::SendError(format!("Send failed: {e:?}")),
                             );
                         }
                     }
-                },
+                }
                 SchedulerTask::ConnectTo(sender_pid, target_pid) => {
                     let entry = match self.procs.iter_mut().find(|p| p.pid() == target_pid) {
                         Some(entry) => entry,
                         None => {
-                            _ = self.procs[sender_pid as usize].receive(
-                                crate::proc::IpcData::SendError(alloc::format!(
-                                    "Invalid PID: {target_pid}"
-                                )),
-                            );
+                            _ = self.procs[sender_pid as usize].receive(IpcData::SendError(
+                                format!("Invalid PID: {target_pid}"),
+                            ));
                             continue;
                         }
                     };
@@ -149,12 +145,12 @@ impl CooperativeScheduler {
         }
     }
 
-    pub fn start(&mut self) -> Result<(), SchedulerError<crate::proc::ProcessError>> {
+    pub fn start(&mut self) -> Result<(), SchedulerError<ProcessError>> {
         loop {
             self.process_tasks();
             let mut i = 0;
             while i < self.procs.len() {
-                if self.procs[i].status() != crate::proc::ProcessStatus::Running {
+                if self.procs[i].status() != ProcessStatus::Running {
                     i += 1;
                     continue;
                 }
@@ -163,37 +159,33 @@ impl CooperativeScheduler {
                     match self.procs[i].on_tick() {
                         Err(err) => {
                             let proc = self.procs.remove(i);
-                            crate::proc::registry::PROCESS_TABLE
-                                .lock()
-                                .retain(|e| e.pid != proc.pid());
+                            PROCESS_TABLE.lock().retain(|e| e.pid != proc.pid());
                             proc.on_uninit();
-                            crate::klog::log(
+                            log(
                                 "Cooperative Scheduler",
-                                &alloc::format!("Process exited with error {:?}", err),
-                                crate::klog::MessageType::Error
+                                &format!("Process exited with error {:?}", err),
+                                MessageType::Error,
                             );
                             break;
                         }
-                        Ok(crate::proc::ProcessEvent::Yielded) => break,
-                        Ok(crate::proc::ProcessEvent::Closed(_code)) => {
+                        Ok(ProcessEvent::Yielded) => break,
+                        Ok(ProcessEvent::Closed(_code)) => {
                             let proc = self.procs.remove(i);
-                            crate::proc::registry::PROCESS_TABLE
-                                .lock()
-                                .retain(|e| e.pid != proc.pid());
-                            crate::klog::log(
+                            PROCESS_TABLE.lock().retain(|e| e.pid != proc.pid());
+                            log(
                                 "Cooperative Scheduler",
-                                &alloc::format!(
+                                &format!(
                                     "Process closed: {} | PID {}",
                                     proc.name(),
                                     proc.pid()
                                 ),
-                                crate::klog::MessageType::Error
+                                MessageType::Error,
                             );
                             proc.on_uninit();
                             removed = true;
                             break;
                         }
-                        Ok(crate::proc::ProcessEvent::Continue) => continue,
+                        Ok(ProcessEvent::Continue) => continue,
                     }
                 }
                 if removed {
@@ -202,7 +194,7 @@ impl CooperativeScheduler {
 
                 let pid = self.procs[i].pid();
                 let status = self.procs[i].status();
-                if let Some(entry) = crate::proc::registry::PROCESS_TABLE
+                if let Some(entry) = PROCESS_TABLE
                     .lock()
                     .iter_mut()
                     .find(|e| e.pid == pid)
@@ -228,15 +220,11 @@ pub enum SchedulerTask {
     Unfreeze(u32),
     Freeze(u32),
     Kill(u32),
-    Spawn(
-        alloc::boxed::Box<
-            dyn FnOnce() -> alloc::boxed::Box<dyn crate::proc::Process> + Send + 'static,
-        >,
-    ),
-    Send(u32, u32, crate::proc::IpcData),
+    Spawn(Box<dyn FnOnce() -> Box<dyn Process> + Send + 'static>),
+    Send(u32, u32, IpcData),
     /// This task carries the PID of the process that created this task, and
     /// the PID of the target process
-    /// 
+    ///
     /// This can for example be used for processes subscribing to other processes.
     /// A concrete example would be the PS/2 driver and a shell. The PS/2 process
     /// sends its input to all subscribers via IPC, but in order to do that, it
