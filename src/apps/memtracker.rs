@@ -84,5 +84,5 @@ impl crate::proc::Process for MemTracker {
     fn receive(&mut self, _data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
         Err(crate::proc::IpcReceiveError::Message("Not expecting any data"))
     }
-    fn bind(&mut self, subscriber: u32) {}
+    fn bind(&mut self, _subscriber: u32) {}
 }

@@ -51,20 +51,23 @@ impl crate::proc::Process for Ps2Driver {
     }
     fn on_init(&self) {
         unsafe {
-            STAT_PORT.write(0xAD);
-            STAT_PORT.write(0xA7);
-
-            while STAT_PORT.read() & 0x1 != 0 {
-                let _ = DATA_PORT.read();
+            #[allow(const_item_mutation)]
+            {
+                STAT_PORT.write(0xAD);
+                STAT_PORT.write(0xA7);
+                while STAT_PORT.read() & 0x1 != 0 {
+                    let _ = DATA_PORT.read();
+                }
+                STAT_PORT.write(0xAE);
             }
-
-            STAT_PORT.write(0xAE);
         }
     }
     fn on_tick(&mut self) -> Result<crate::proc::ProcessEvent, crate::proc::ProcessError> {
         self.ticks += 1;
         if self.ticks.is_multiple_of(10_000) {
+            #[allow(const_item_mutation)]
             if unsafe { STAT_PORT.read() } & 0x1 != 0 {
+                #[allow(const_item_mutation)]
                 let scancode = unsafe { DATA_PORT.read() };
                 let is_release = scancode & 0x80 != 0;
                 let key = scancode & 0x7F;
@@ -121,7 +124,7 @@ impl crate::proc::Process for Ps2Driver {
         Ok(crate::proc::ProcessEvent::Yielded)
     }
     fn on_uninit(self: alloc::boxed::Box<Self>) {}
-    fn receive(&mut self, data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
+    fn receive(&mut self, _data: crate::proc::IpcData) -> Result<(), crate::proc::IpcReceiveError> {
         Ok(())
     }
     fn bind(&mut self, subscriber: u32) {
@@ -134,19 +137,7 @@ impl crate::proc::Process for Ps2Driver {
     }
 }
 
-struct Ps2Data {
-    char: u8,
-}
-
 pub enum Keymap {
     DE,
     US,
-}
-
-fn scancode_to_ascii(key: u8) -> Option<char> {
-    crate::res::keymaps::QWERTZ_NORMAL
-        .get(key as usize)
-        .copied()
-        .filter(|&b| b != 0 as char)
-        .map(|b| b as char)
 }

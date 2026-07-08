@@ -70,5 +70,5 @@ impl crate::proc::Process for Shell {
         }
         Ok(())
     }
-    fn bind(&mut self, subscriber: u32) {}
+    fn bind(&mut self, _subscriber: u32) {}
 }
